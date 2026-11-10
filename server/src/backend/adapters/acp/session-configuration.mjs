@@ -48,7 +48,7 @@ export function coordinatorMeta(profile, ownerId, options = {}) {
   return profile.coordinatorMeta?.(ownerId, options) || null
 }
 
-async function applyProfileSessionConfig({
+export async function applyProfileSessionConfig({
   client,
   profile,
   label,

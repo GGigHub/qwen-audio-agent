@@ -18,6 +18,7 @@ const COMMANDS = new Set([
   'skill',
   'connect',
   'disconnect',
+  'attach',
 ])
 const GATEWAY_ACTIONS = new Set([
   'run',
@@ -137,10 +138,20 @@ function parseCommandArguments(argv, env) {
   if (command === 'skill' && skillAction === 'remove' && !skillTarget) {
     throw new Error('skill remove 需要技能名称')
   }
+  const attachSessionId = command === 'attach'
+    && args[0]
+    && !args[0].startsWith('-')
+    ? args.shift()
+    : ''
+  if (command === 'attach' && !attachSessionId) {
+    throw new Error('attach 需要 session id')
+  }
 
   const options = {
     command,
     configAction,
+    attachSessionId,
+    attachWorkspace: '',
     realtimeModel: '',
     gatewayAction,
     deviceId,
@@ -246,6 +257,9 @@ function parseCommandArguments(argv, env) {
       options.endpoint = nextValue(args, index++, '--endpoint').trim()
     } else if (argument === '--session') {
       options.sessionId = nextValue(args, index++, '--session')
+    } else if (argument === '--workspace') {
+      if (command !== 'attach') throw new Error('--workspace 只适用于 attach')
+      options.attachWorkspace = nextValue(args, index++, '--workspace')
     } else if (argument === '--audio-mode') {
       options.audioMode = nextValue(args, index++, '--audio-mode').toLowerCase()
       audioModeSpecified = true
@@ -264,10 +278,11 @@ function parseCommandArguments(argv, env) {
   for (const option of backendOptions) {
     if (command === 'gateway' && gatewayAction === 'run') continue
     if (command === 'setup' && option === '--backend') continue
+    if (command === 'attach' && option === '--backend') continue
     if (command === 'gateway' && ['install', 'start', 'stop', 'restart', 'uninstall'].includes(gatewayAction)) {
       throw new Error('Gateway 后台服务从 config.env 读取配置；请先修改配置，再执行服务命令')
     }
-    throw new Error(`${option} 只适用于 gateway run${option === '--backend' ? ' 或 setup' : ''}；客户端不会修改 Gateway 的后台配置`)
+    throw new Error(`${option} 只适用于 gateway run${option === '--backend' ? '、setup 或 attach' : ''}；客户端不会修改 Gateway 的后台配置`)
   }
 
   if ((command !== 'config' || configAction !== 'set') && options.realtimeModel) {
@@ -450,6 +465,8 @@ export function helpText() {
     '  qwenaudio skill list          查看已安装技能',
     '  qwenaudio skill remove NAME   移除技能',
     '  qwenaudio skill update        更新已安装技能',
+    '  qwenaudio attach <session-id> [--workspace DIR] [--backend NAME]',
+    '                         下次语音会话附着到已有 ACP 会话（需后台支持；DSH 请先关闭 GUI 中的该会话）',
     '',
     'Gateway 选项：',
     '  --url URL              Gateway 地址（覆盖 QWEN_AUDIO_AGENT_URL、HOST/PORT）',

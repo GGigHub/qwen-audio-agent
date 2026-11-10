@@ -119,6 +119,48 @@ test('quarantines a corrupt Session index before accepting new state', () => {
   }
 })
 
+test('archives superseded coordinators without wiping later reconciliations', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwaudio-acp-archive-'))
+  const filePath = join(directory, 'acp-sessions.json')
+  const key = 'deepseek:owner:backend'
+  try {
+    const registry = new AcpSessionRegistry({ filePath })
+    registry.set(key, {
+      sessionId: 'old-session',
+      cwd: '/work',
+      contractVersion: 7,
+    })
+    registry.delete(key)
+    registry.appendReconciliation(key, {
+      kind: 'coordinator_contract_superseded',
+      request_id: null,
+      outcome: 'v7 -> v8',
+    })
+    registry.setArchivedCoordinator(key, {
+      superseded: [{
+        sessionId: 'old-session',
+        contractVersion: 7,
+        replacedAt: 100,
+      }],
+    })
+
+    const archived = registry.takeArchivedCoordinator(key)
+    assert.equal(archived.superseded[0].sessionId, 'old-session')
+    assert.equal(registry.takeArchivedCoordinator(key), null)
+    assert.equal(registry.reconciliationsFor(key).length, 1)
+
+    registry.set(key, {
+      sessionId: 'new-session',
+      cwd: '/work',
+      contractVersion: 8,
+      superseded: archived.superseded,
+    })
+    assert.equal(registry.get(key).superseded[0].sessionId, 'old-session')
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 test('quarantines an unsupported Session index version', () => {
   const directory = mkdtempSync(join(tmpdir(), 'qwaudio-acp-version-'))
   const filePath = join(directory, 'acp-sessions.json')

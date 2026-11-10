@@ -67,12 +67,15 @@ test('profile construction applies the immutable driver capability contract', ()
     delegation: false,
     permissions: true,
     backendUi: false,
-    nativeSessionHistory: false,
+    nativeSessionHistory: true,
     externalMcp: true,
     nativeDelegation: false,
     sessionMcp: true,
     coordinatorMcpInstructions: false,
+    attachableSession: true,
   })
+  assert.equal(profile.attachableSession, true)
+  assert.equal(profile.nativeSessionHistory, true)
   assert.equal(Object.isFrozen(profile.capabilities), true)
 })
 

@@ -27,6 +27,10 @@ export class BackendWorkRuntime {
       objective: input?.objective,
       inputParts: input?.inputParts || [],
       ...(input?.resumeContext ? { resumeContext: input.resumeContext } : {}),
+      ...(clean(input?.model) ? { model: clean(input.model) } : {}),
+      ...(clean(input?.reasoning_effort)
+        ? { reasoning_effort: clean(input.reasoning_effort) }
+        : {}),
       ...(options.continuity !== 'isolated' && input?.conversation
         ? { conversation: input.conversation } : {}),
       ...(options.continuity === 'isolated' ? { continuity: 'isolated' } : {}),

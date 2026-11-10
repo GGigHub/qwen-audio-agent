@@ -61,6 +61,7 @@ import {
   showConfig,
   updateRealtimeModelConfig,
 } from './config-command.mjs'
+import { attachPendingPath, writePendingAttach } from '../../server/src/backend/adapters/acp/pending-attach.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const gatewayPath = resolve(root, 'server/src/index.mjs')
@@ -304,7 +305,7 @@ export async function main(argv, {
     return 0
   }
   const processModelOverrides = { ...env }
-  const readOnlyCommand = ['setup', 'install', 'doctor', 'connect', 'disconnect', 'tui', 'webui', 'status'].includes(argv[0])
+  const readOnlyCommand = ['setup', 'install', 'doctor', 'connect', 'disconnect', 'tui', 'webui', 'status', 'attach'].includes(argv[0])
     || (argv[0] === 'gateway' && argv[1] === 'status')
     || argv.includes('--help') || argv.includes('-h')
     || (argv[0] === 'config' && argv[1] === 'show')
@@ -330,6 +331,33 @@ export async function main(argv, {
   }
   if (options.help) {
     stdout.write(`${helpText()}\n`)
+    return 0
+  }
+  if (options.command === 'attach') {
+    const protocol = options.backend || normalizeBackendProtocol(env.AGENT_PROTOCOL)
+    if (!protocol) {
+      throw new Error('attach 需要已配置的后台 Agent；请设置 AGENT_PROTOCOL 或传入 --backend')
+    }
+    if (protocol !== 'deepseek') {
+      throw new Error(`当前仅 DeepSeek Harness 支持会话附着（收到：${protocol}）`)
+    }
+    const sessionStatePath = resolve(environment.stateDirectory, 'acp-sessions.json')
+    const pendingPath = attachPendingPath(sessionStatePath)
+    const workspace = String(options.attachWorkspace || '').trim()
+      || String(env.DEEPSEEK_HARNESS_WORKSPACE || env.QWAUDIO_WORKSPACE || '').trim()
+      || environment.sharedWorkspace
+    const pending = writePendingAttach(pendingPath, {
+      sessionId: options.attachSessionId,
+      cwd: workspace,
+      protocol,
+    })
+    stdout.write([
+      `已登记附着请求：${pending.sessionId}`,
+      `工作区：${pending.cwd || '(默认)'}`,
+      '请先在 DSH GUI 中关闭该会话（同一会话只能有一个写入方），然后启动或继续语音。',
+      '下一次协调会话创建时会消费此请求（一次性）。',
+      '',
+    ].join('\n'))
     return 0
   }
   if (options.command === 'doctor') {

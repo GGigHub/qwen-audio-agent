@@ -27,13 +27,19 @@ export class AcpSessionRegistry {
     this.coordinators = {}
     this.projects = {}
     this.reconciliations = {}
+    this.archives = {}
   }
 
   load() {
     if (this.loaded) return
     this.loaded = true
     const parsed = this.store.load({
-      fallback: () => ({ coordinators: {}, projects: {}, reconciliations: {} }),
+      fallback: () => ({
+        coordinators: {},
+        projects: {},
+        reconciliations: {},
+        archives: {},
+      }),
       validate: value => Boolean(
         value.coordinators
         && typeof value.coordinators === 'object'
@@ -47,12 +53,18 @@ export class AcpSessionRegistry {
           value.reconciliations
           && typeof value.reconciliations === 'object'
           && !Array.isArray(value.reconciliations)
+        ))
+        && (value.archives === undefined || (
+          value.archives
+          && typeof value.archives === 'object'
+          && !Array.isArray(value.archives)
         )),
       ),
     })
     this.coordinators = parsed.coordinators
     this.projects = parsed.projects || {}
     this.reconciliations = parsed.reconciliations || {}
+    this.archives = parsed.archives || {}
   }
 
   get(key) {
@@ -78,6 +90,9 @@ export class AcpSessionRegistry {
         ? { coordinatorPromptTurns: session.coordinatorPromptTurns }
         : {}),
       ...(session.conversationCursors ? { conversationCursors: { ...session.conversationCursors } } : {}),
+      ...(Array.isArray(session.superseded) && session.superseded.length
+        ? { superseded: session.superseded.slice(-5) }
+        : {}),
       updatedAt: Date.now(),
     }
     this.save()
@@ -88,6 +103,32 @@ export class AcpSessionRegistry {
     delete this.coordinators[String(key)]
     delete this.reconciliations[String(key)]
     this.save()
+  }
+
+  setArchivedCoordinator(key, { superseded } = {}) {
+    this.load()
+    const entries = Array.isArray(superseded) ? superseded.slice(-5) : []
+    if (!entries.length) return
+    this.archives[String(key)] = {
+      superseded: entries.map(entry => ({ ...entry })),
+      archivedAt: Date.now(),
+    }
+    this.save()
+  }
+
+  takeArchivedCoordinator(key) {
+    this.load()
+    const storageKey = String(key)
+    const value = this.archives[storageKey]
+    if (!value || typeof value !== 'object') return null
+    delete this.archives[storageKey]
+    this.save()
+    return {
+      superseded: Array.isArray(value.superseded)
+        ? value.superseded.map(entry => ({ ...entry }))
+        : [],
+      archivedAt: value.archivedAt,
+    }
   }
 
   reconciliationsFor(key) {
@@ -153,6 +194,7 @@ export class AcpSessionRegistry {
       coordinators: this.coordinators,
       projects: this.projects,
       reconciliations: this.reconciliations,
+      archives: this.archives,
     })
   }
 

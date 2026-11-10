@@ -7,11 +7,12 @@ export const deepSeekHarnessBackendDriver = {
     delegation: false,
     permissions: true,
     backendUi: false,
-    nativeSessionHistory: false,
+    nativeSessionHistory: true,
     externalMcp: true,
     nativeDelegation: false,
     sessionMcp: true,
     coordinatorMcpInstructions: false,
+    attachableSession: true,
   },
 
   createProfile({ directory, cliPath }) {
@@ -28,7 +29,8 @@ export const deepSeekHarnessBackendDriver = {
       sessionMcp: true,
       nativeDelegation: false,
       delegation: false,
-      nativeSessionHistory: false,
+      nativeSessionHistory: true,
+      attachableSession: true,
       backendUi: false,
       sessionInstructions: [
         'Complete the requested work in this Session with the available tools.',

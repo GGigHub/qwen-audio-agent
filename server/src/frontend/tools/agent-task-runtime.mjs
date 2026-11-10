@@ -393,11 +393,15 @@ export class AgentTaskRuntime {
         turnId || callId,
         objectiveFingerprint(objective),
       ].join(':')
+      const model = String(args.model || '').trim()
+      const reasoningEffort = String(args.reasoning_effort || '').trim()
       task = this.host.createWork({
         turnId,
         objective,
         submissionKey,
         inputParts: delegatedInputParts,
+        ...(model ? { model } : {}),
+        ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
       })
     } catch (error) {
       const message = String(error?.message || error || '')

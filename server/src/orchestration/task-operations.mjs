@@ -57,15 +57,21 @@ export class TaskOperations {
     return this.taskManager.list({ sessionId, active, ...filters, ownerId: owner(context) })
   }
 
-  submit({ objective, inputParts = [], submissionKey }, context) {
+  submit({ objective, inputParts = [], submissionKey, model, reasoning_effort }, context) {
     const ownerId = owner(context)
     const { sessionId = 'main', turnId } = context
     const conversation = this.conversationSnapshot?.(context)
+    const modelOverride = String(model || '').trim()
+    const reasoningEffort = String(reasoning_effort || '').trim()
     return this.taskManager.create({
       objective, ownerId, sessionId, turnId, submissionKey,
       runner: (_objective, execution) => this.run(inputWithUpdates(
         this.taskManager.tasks.get(execution.taskId), {
-          objective, inputParts, ...(conversation ? { conversation } : {}),
+          objective,
+          inputParts,
+          ...(modelOverride ? { model: modelOverride } : {}),
+          ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+          ...(conversation ? { conversation } : {}),
         },
       ), {
         ...execution, ownerId, sessionId, turnId,

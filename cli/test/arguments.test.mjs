@@ -59,6 +59,7 @@ test('shows help for subcommands that otherwise require arguments', () => {
     ['skill', '-h'],
     ['config', 'set', '--help'],
     ['gateway', 'revoke', '--help'],
+    ['attach', '--help'],
   ]) {
     const options = parseArguments(argv, {})
     assert.equal(options.help, true, argv.join(' '))
@@ -67,6 +68,21 @@ test('shows help for subcommands that otherwise require arguments', () => {
   // 未请求帮助时仍然报告缺少的参数；未知命令即使带 --help 也不隐藏。
   assert.throws(() => parseArguments(['install'], {}), /install 缺少后台名称/)
   assert.throws(() => parseArguments(['unknown', '--help'], {}), /未知命令/)
+  assert.throws(() => parseArguments(['attach'], {}), /attach 需要 session id/)
+})
+
+test('parses attach session id and workspace', () => {
+  const options = parseArguments([
+    'attach',
+    'sess-abc',
+    '--workspace', 'F:\\work\\demo',
+    '--backend', 'deepseek',
+  ], {})
+  assert.equal(options.command, 'attach')
+  assert.equal(options.attachSessionId, 'sess-abc')
+  assert.equal(options.attachWorkspace, 'F:\\work\\demo')
+  assert.equal(options.backend, 'deepseek')
+  assert.match(helpText(), /qwenaudio attach/)
 })
 
 test('parses remote Gateway connection profile commands', () => {

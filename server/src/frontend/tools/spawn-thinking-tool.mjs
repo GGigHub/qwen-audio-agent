@@ -20,6 +20,15 @@ export const spawnThinkingTool = {
           maxItems: 8,
           description: '仅当任务依赖此前轮次标注为“可引用输入”的图片或文件时填写对应 input_N；本轮提交的输入会自动携带。没有相关输入时省略，不得猜造引用。',
         },
+        model: {
+          type: 'string',
+          description: '本次任务使用的后台模型标识；省略则沿用当前会话默认。仅在用户明确要求换模型时填写。',
+        },
+        reasoning_effort: {
+          type: 'string',
+          enum: ['low', 'medium', 'high'],
+          description: '本次任务的思考深度；省略则沿用默认。仅在后台支持且用户明确要求时填写。',
+        },
       },
       required: ['objective'],
       additionalProperties: false,

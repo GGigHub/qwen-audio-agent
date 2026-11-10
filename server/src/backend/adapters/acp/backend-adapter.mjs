@@ -50,10 +50,15 @@ import {
 } from './coordinator-instructions.mjs'
 import { conversationDelta, COORDINATOR_CONVERSATION_MAX_CHARS } from '../../../core/work-conversation-context.mjs'
 import {
+  applyProfileSessionConfig,
   configureAcpSession,
   coordinatorMeta,
   normalizeAcpModel,
 } from './session-configuration.mjs'
+import {
+  attachPendingPath,
+  consumePendingAttach,
+} from './pending-attach.mjs'
 
 const MAX_SESSION_RESULTS = 100
 const MAX_DELEGATION_RESULT_CHARS = 12_000
@@ -209,6 +214,7 @@ export class AcpBackendAdapter {
       model: this.model,
     })
     this.registry = new AcpSessionRegistry({ filePath: sessionStatePath })
+    this.attachPendingPath = attachPendingPath(sessionStatePath)
     this.sessionToolServer = sessionToolServer || new AcpSessionToolServer()
     // Baseline stdio MCP servers (e.g. open-computer-use) injected into every
     // Session; backends spawn and connect to them on their own.
@@ -488,9 +494,69 @@ export class AcpBackendAdapter {
     return this.coordinatorQueue.acquire(this.coordinatorSessionKey(ownerId, sessionId), { signal })
   }
 
+  async attachCoordinatorSession(ownerId, {
+    sessionId,
+    cwd,
+    mcpServers = [],
+  } = {}) {
+    if (this.profile.attachableSession !== true) {
+      throw new AgentError(`${this.label} 不支持附着已有会话`, {
+        status: 422,
+        protocol: this.protocol,
+      })
+    }
+    const key = coordinatorKey(ownerId, this.protocol)
+    const targetId = clean(sessionId)
+    if (!targetId) {
+      throw new AgentError('附着会话需要 session id', {
+        status: 400,
+        protocol: this.protocol,
+      })
+    }
+    if (this.builtinMcp.length) this.builtinMcpLifecycle.markUsed()
+    this.coordinatorSessions.delete(key)
+    const session = await this.client.resumeSession(targetId, {
+      cwd: clean(cwd) || this.directory,
+      mcpServers,
+      meta: this.coordinatorMeta(ownerId, key),
+      ownerId,
+      role: 'coordinator',
+    })
+    session.isNew = false
+    session.contractVersion = COORDINATOR_CONTRACT_VERSION
+    await this.configureSession(session, 'coordinator')
+    this.coordinatorSessions.set(key, session)
+    this.registry.set(key, session)
+    this.registry.appendReconciliation(key, {
+      kind: 'coordinator_attached',
+      request_id: null,
+      outcome: targetId,
+    })
+    logger.info('acp.coordinator_attached', {
+      protocol: this.protocol,
+      sessionId: targetId,
+      cwd: clean(session.cwd) || clean(cwd) || this.directory,
+    })
+    return session
+  }
+
   async ensureCoordinatorSession(ownerId, mcpServers = [], { expectedSessionId = '' } = {}) {
     if (this.builtinMcp.length) this.builtinMcpLifecycle.markUsed()
     const key = coordinatorKey(ownerId, this.protocol)
+    const pendingAttach = this.profile.attachableSession === true
+      ? consumePendingAttach(this.attachPendingPath, { protocol: this.protocol })
+      : null
+    if (pendingAttach?.sessionId) {
+      this.coordinatorSessions.delete(key)
+      if (this.coordinatorSessionPromises.has(key)) {
+        await this.coordinatorSessionPromises.get(key).catch(() => {})
+      }
+      return this.attachCoordinatorSession(ownerId, {
+        sessionId: pendingAttach.sessionId,
+        cwd: pendingAttach.cwd || this.directory,
+        mcpServers,
+      })
+    }
     if (this.coordinatorSessions.has(key)) {
       const session = this.coordinatorSessions.get(key)
       if (session.connectionGeneration === this.client.connectionGeneration) return session
@@ -509,7 +575,29 @@ export class AcpBackendAdapter {
         && stored.contractVersion === contractVersion,
       )
       if (stored?.sessionId && !canResumeStored) {
+        const superseded = [
+          ...(Array.isArray(stored.superseded) ? stored.superseded : []),
+          {
+            sessionId: stored.sessionId,
+            contractVersion: stored.contractVersion,
+            replacedAt: Date.now(),
+          },
+        ].slice(-5)
+        // Clear the live coordinator first, then keep an auditable archive.
+        // append after delete so delete() cannot wipe the new reconciliation.
         this.registry.delete(key)
+        this.registry.appendReconciliation(key, {
+          kind: 'coordinator_contract_superseded',
+          request_id: null,
+          outcome: `v${stored.contractVersion} -> v${contractVersion}`,
+        })
+        this.registry.setArchivedCoordinator(key, { superseded })
+        logger.warn('acp.coordinator_contract_superseded', {
+          protocol: this.protocol,
+          sessionId: stored.sessionId,
+          from: stored.contractVersion,
+          to: contractVersion,
+        })
       }
       if (canResumeStored) {
         try {
@@ -532,12 +620,25 @@ export class AcpBackendAdapter {
             session.isNew = false
             session.conversationCursors = stored.conversationCursors
             session.coordinatorPromptTurns = stored.coordinatorPromptTurns
+            if (Array.isArray(stored.superseded) && stored.superseded.length) {
+              session.superseded = stored.superseded
+            }
           }
-        } catch {
+        } catch (error) {
           if (expectedSessionId) {
             throw updateError('context_unavailable', '原协调会话无法恢复，未创建替代会话。')
           }
           this.registry.delete(key)
+          this.registry.appendReconciliation(key, {
+            kind: 'coordinator_resume_failed',
+            request_id: null,
+            outcome: `${error?.name || 'Error'}: ${clean(error?.message)}`.slice(0, 200),
+          })
+          logger.warn('acp.coordinator_resume_failed', {
+            protocol: this.protocol,
+            sessionId: stored.sessionId,
+            reason: clean(error?.message),
+          })
         }
       }
       if (!session) {
@@ -552,6 +653,10 @@ export class AcpBackendAdapter {
           role: 'coordinator',
         })
         session.isNew = true
+      }
+      const archived = this.registry.takeArchivedCoordinator(key)
+      if (archived?.superseded?.length) {
+        session.superseded = archived.superseded
       }
       session.contractVersion = contractVersion
       await this.configureSession(session, 'coordinator')
@@ -606,6 +711,27 @@ export class AcpBackendAdapter {
       profile: this.profile,
       protocol: this.protocol,
     }, session, role)
+  }
+
+  async applyTaskSessionConfig(session, {
+    model = '',
+    reasoningEffort = '',
+  } = {}) {
+    const sessionConfigOptions = [
+      ...(clean(model) ? [{ id: 'model', value: clean(model) }] : []),
+      ...(clean(reasoningEffort)
+        ? [{ id: 'reasoning_effort', value: clean(reasoningEffort) }]
+        : []),
+    ]
+    if (!sessionConfigOptions.length) return
+    await applyProfileSessionConfig({
+      client: this.client,
+      profile: { sessionConfigOptions },
+      label: this.label,
+      protocol: this.protocol,
+    }, session, Array.isArray(session?.response?.configOptions)
+      ? session.response.configOptions
+      : [])
   }
 
   async handlePermission(params, { signal, session } = {}) {
@@ -714,6 +840,13 @@ export class AcpBackendAdapter {
   }
 
   async listProjectSessions({ query, limit } = {}) {
+    if (this.profile.nativeSessionHistory === false) {
+      return {
+        sessions: [],
+        unsupported: true,
+        reason: `${this.label} 未声明原生会话历史能力`,
+      }
+    }
     const sessions = await this.client.listSessions({
       limit: limit || 20,
     })
@@ -1173,6 +1306,8 @@ export class AcpBackendAdapter {
     phase = 'execute',
     conversation,
     workObjective,
+    sessionModel = '',
+    sessionReasoningEffort = '',
   }) {
     const run = {
       ownerId: clean(ownerId),
@@ -1227,6 +1362,14 @@ export class AcpBackendAdapter {
     }
     if (updates?.expectedSessionId && updates.expectedSessionId !== session.sessionId) {
       throw updateError('context_unavailable', '原后台会话已不可用，未在其他会话中自动重做。')
+    }
+    // Task-level overrides take effect from the next model step, including the
+    // remainder of the current turn. Omit them to keep the session defaults.
+    if (phase === 'execute' && (clean(sessionModel) || clean(sessionReasoningEffort))) {
+      await this.applyTaskSessionConfig(session, {
+        model: sessionModel,
+        reasoningEffort: sessionReasoningEffort,
+      })
     }
     const permissionScopeId = `prompt_${randomUUID()}`
     run.sessionId = session.sessionId
@@ -1515,6 +1658,8 @@ export class AcpBackendAdapter {
         projectTargets: continuation?.projects,
         signal: workSignal,
         onEvent,
+        sessionModel: clean(work?.model),
+        sessionReasoningEffort: clean(work?.reasoning_effort),
       })
       const result = await run(promptWithInputParts(prompt, work?.inputParts))
       const artifacts = artifactsFromAcpContentBlocks(result?.contentBlocks)
@@ -1681,6 +1826,8 @@ export class AcpBackendAdapter {
     projectTargets: savedProjectTargets = [],
     signal,
     onEvent,
+    sessionModel = '',
+    sessionReasoningEffort = '',
   } = {}) {
     // Health polling and task dispatch share the ACP client's start promise.
     // The execution path additionally waits for an owned service endpoint, so
@@ -1693,8 +1840,17 @@ export class AcpBackendAdapter {
       onEvent,
     })
     try {
-      const options = { ownerId, coordinationRunId, coordinationRequestId, workObjective,
-        projectTargets: savedProjectTargets, signal, onEvent: publish }
+      const options = {
+        ownerId,
+        coordinationRunId,
+        coordinationRequestId,
+        workObjective,
+        projectTargets: savedProjectTargets,
+        signal,
+        onEvent: publish,
+        sessionModel,
+        sessionReasoningEffort,
+      }
       const continuingProjects = savedProjectTargets.length > 0
       const initial = await this.withCoordinatorTurn(
         continuingProjects ? projectUpdatePrompt(savedProjectTargets, message) : message,
