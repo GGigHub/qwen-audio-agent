@@ -63,6 +63,9 @@ import { createOrbPlacement } from './orb-placement.mjs'
 import { bindOrbShell, configureOrbWindow } from './orb-shell.mjs'
 import { createSettingsStore } from './settings-store.mjs'
 import { desktopClientPaths } from './client-paths.mjs'
+import { createLocalVoiceStore } from './local-voice/store.mjs'
+import { createLocalVoiceRuntime } from './local-voice/runtime.mjs'
+import { localVoiceGatewayPatch } from './local-voice/definitions.mjs'
 import { createDesktopBackendManagement } from './backend/management.mjs'
 import {
   clientSettingsPatch,
@@ -100,6 +103,10 @@ import { createElectronGatewayCredentialStore } from './gateway-credential-store
 // preferences, credentials, presentation assets and local caches.
 app.setName('Qwen Audio Agent')
 const clientPaths = desktopClientPaths(app.getPath('userData'))
+const localVoiceStore = createLocalVoiceStore({
+  configPath: clientPaths.localVoiceConfigPath,
+})
+const localVoiceRuntime = createLocalVoiceRuntime({ store: localVoiceStore })
 
 const here = dirname(fileURLToPath(import.meta.url))
 const sourceRoot = resolve(here, '../..')
@@ -866,6 +873,7 @@ ipcMain.handle('qwen-audio-agent:settings-load', async event => {
         backend: null,
       }
     : await runtimeStatus()
+  const localVoice = await localVoiceRuntime.status()
   return {
     settings,
     realtimeModelCatalogs: modelCatalogs,
@@ -876,12 +884,49 @@ ipcMain.handle('qwen-audio-agent:settings-load', async event => {
     ),
     skins: [...BUILTIN_ORB_SKINS, ...listSkins(skinsRoot)],
     runtime,
+    localVoice,
     setupRequired,
     firstRun: !configExistedAtLaunch,
     runtimeError: lastRuntimeError || null,
     wakeShortcutRegistered: desktopPresence.shortcutRegistered,
     restartRequired: false,
   }
+})
+
+ipcMain.handle('qwen-audio-agent:local-voice-status', async event => {
+  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
+    throw new Error('无权读取本地语音状态')
+  }
+  return localVoiceRuntime.status()
+})
+
+ipcMain.handle('qwen-audio-agent:local-voice-save', async (event, config) => {
+  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
+    throw new Error('无权保存本地语音配置')
+  }
+  const saved = localVoiceRuntime.save(config || {})
+  return localVoiceRuntime.status(saved)
+})
+
+ipcMain.handle('qwen-audio-agent:local-voice-verify', async (event, config) => {
+  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
+    throw new Error('无权检测本地语音安装')
+  }
+  return localVoiceRuntime.verifyInstall(config || {})
+})
+
+ipcMain.handle('qwen-audio-agent:local-voice-start', async (event, config) => {
+  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
+    throw new Error('无权启动本地语音')
+  }
+  return localVoiceRuntime.start(config || {})
+})
+
+ipcMain.handle('qwen-audio-agent:local-voice-stop', async event => {
+  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
+    throw new Error('无权停止本地语音')
+  }
+  return localVoiceRuntime.stop()
 })
 
 ipcMain.handle('qwen-audio-agent:set-node-path', async (event, nodePath) => {
@@ -1016,6 +1061,11 @@ ipcMain.handle('qwen-audio-agent:updater-install', event => {
 ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
   if (!settingsWindow || event.sender !== settingsWindow.webContents) {
     throw new Error('无权保存设置')
+  }
+  const localVoiceConfig = localVoiceStore.load()
+  const localPatch = localVoiceGatewayPatch(localVoiceConfig)
+  if (localPatch && settings && typeof settings === 'object') {
+    Object.assign(settings, localPatch)
   }
   return applyDesktopSettings(settings)
 })

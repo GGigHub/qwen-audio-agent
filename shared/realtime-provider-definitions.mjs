@@ -65,7 +65,7 @@ export const REALTIME_PROVIDERS = Object.freeze([
   }),
   defineProvider({
     key: 'speech-to-speech', label: 'Speech-to-Speech', aliases: ['s2s'],
-    description: 'Speech-to-Speech · Hugging Face · 需单独启动本地服务',
+    description: 'Speech-to-Speech · 本地模型流水线 · 可在设置「本地模型」中安装并启停',
     endpoint: DEFAULT_SPEECH_TO_SPEECH_REALTIME_URL,
   }),
   defineProvider({

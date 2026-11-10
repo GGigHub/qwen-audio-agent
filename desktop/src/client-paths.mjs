@@ -13,5 +13,6 @@ export function desktopClientPaths(userDataDirectory) {
     logDirectory: resolve(directory, 'logs'),
     credentialsPath: resolve(directory, 'gateway-credentials.json'),
     connectionsPath: resolve(directory, 'gateway-connections.json'),
+    localVoiceConfigPath: resolve(directory, 'local-voice.json'),
   }
 }
