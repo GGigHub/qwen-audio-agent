@@ -347,23 +347,64 @@
     }
     details.advanced[open] > summary::after { content: "收起"; }
     .adv-body { padding: 0 16px 16px; }
-    table.params {
-      width: 100%;
-      border-collapse: collapse;
+    .enum-grid {
+      display: grid;
+      gap: 12px;
+    }
+    .enum-item {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .enum-item .top {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 10px;
+      align-items: start;
+    }
+    .enum-item .key {
       font-size: 12px;
+      color: var(--muted);
+      padding-top: 8px;
     }
-    table.params th, table.params td {
-      border-bottom: 1px solid var(--border);
-      padding: 8px 6px;
-      text-align: left;
-      vertical-align: top;
-    }
-    table.params th { color: var(--muted); font-weight: 500; }
-    table.params code {
+    .enum-item .key code {
       background: var(--chip);
       padding: 1px 5px;
       border-radius: 4px;
       font-size: 11px;
+      color: var(--text);
+    }
+    .enum-item select, .enum-item textarea {
+      width: 100%;
+      background: #1a1b1e;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 8px 10px;
+      font: inherit;
+      font-size: 13px;
+    }
+    .enum-item textarea { min-height: 64px; resize: vertical; }
+    .enum-desc {
+      margin: 8px 0 0;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+      grid-column: 1 / -1;
+    }
+    .enum-desc strong { color: #cfd3dc; font-weight: 600; }
+    .cmd-preview {
+      margin-top: 12px;
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 11px;
+      background: #121316;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      color: #b8c0d0;
+      white-space: pre-wrap;
+      word-break: break-all;
     }
     .toggle {
       display: inline-flex;
@@ -378,6 +419,7 @@
       position: relative;
       cursor: pointer;
       border: 0;
+      flex-shrink: 0;
     }
     .switch.on { background: var(--accent); }
     .switch::after {
@@ -390,6 +432,9 @@
       transition: left .15s;
     }
     .switch.on::after { left: 18px; }
+    @media (max-width: 720px) {
+      .enum-item .top { grid-template-columns: 1fr; }
+    }
 
     .footer {
       display: flex;
@@ -597,32 +642,206 @@
           </div>
 
           <details class="advanced" open>
-            <summary>高级 · 启动参数说明</summary>
+            <summary>高级 · 启动参数（枚举可配）</summary>
             <div class="adv-body">
-              <div style="margin-bottom:12px" class="toggle">
-                <button type="button" class="switch" id="swSmart" onclick="toggleSmart(this)" aria-label="Smart Turn"></button>
-                <span>启用 Smart Turn（去掉 <code>--no_smart_turn</code>）</span>
+              <p class="hint">下列均为 speech-to-speech 启动枚举；改选项后下方会生成命令预览。推荐默认对应方案 B。</p>
+              <div class="enum-grid" id="enumForm">
+
+                <div class="enum-item">
+                  <div class="top">
+                    <div class="key"><code>--stt</code><br>听写引擎</div>
+                    <select id="pStt" onchange="onParamChange()">
+                      <option value="paraformer" selected>paraformer — 中文推荐（Paraformer-zh）</option>
+                      <option value="parakeet-tdt">parakeet-tdt — 英文向默认；非本工程主路径</option>
+                      <option value="faster-whisper">faster-whisper — Whisper 加速版</option>
+                      <option value="whisper">whisper — 原版 Whisper</option>
+                      <option value="whisper-mlx">whisper-mlx — Apple MLX Whisper</option>
+                      <option value="mlx-audio-whisper">mlx-audio-whisper — Apple mlx-audio</option>
+                      <option value="none">none — 不听写，音频直送音频 LLM（需 chat-completions）</option>
+                    </select>
+                  </div>
+                  <p class="enum-desc" id="dStt"></p>
+                </div>
+
+                <div class="enum-item">
+                  <div class="top">
+                    <div class="key"><code>--llm_backend</code><br>闲聊后端</div>
+                    <select id="pLlmBackend" onchange="onParamChange()">
+                      <option value="chat-completions" selected>chat-completions — OpenAI 兼容 /v1/chat/completions（方案 B）</option>
+                      <option value="transformers">transformers — 本机加载 HF 模型（方案 A）</option>
+                      <option value="responses-api">responses-api — OpenAI Responses 风格接口</option>
+                      <option value="mlx-lm">mlx-lm — Apple Silicon 本地 LLM</option>
+                    </select>
+                  </div>
+                  <p class="enum-desc" id="dLlmBackend"></p>
+                </div>
+
+                <div class="enum-item">
+                  <div class="top">
+                    <div class="key"><code>--model_name</code><br>对话模型</div>
+                    <select id="pModelName" onchange="onParamChange()">
+                      <option value="deepseek-chat" selected>deepseek-chat — DeepSeek 对话（方案 B，派任务稳）</option>
+                      <option value="local-qwen3-4b">本地 Qwen3-4B-Instruct-2507 路径（方案 A）</option>
+                      <option value="deepseek-reasoner">deepseek-reasoner — 推理模型（不推荐口语，会变慢）</option>
+                    </select>
+                  </div>
+                  <p class="enum-desc" id="dModelName"></p>
+                </div>
+
+                <div class="enum-item">
+                  <div class="top">
+                    <div class="key"><code>--responses_api_base_url</code><br>远端 API</div>
+                    <select id="pApiBase" onchange="onParamChange()">
+                      <option value="https://api.deepseek.com" selected>https://api.deepseek.com — DeepSeek 官方</option>
+                      <option value="https://api.openai.com/v1">https://api.openai.com/v1 — OpenAI 兼容示例</option>
+                      <option value="custom">自定义（预览：仍显示 DeepSeek，实现时可填）</option>
+                    </select>
+                  </div>
+                  <p class="enum-desc" id="dApiBase"></p>
+                </div>
+
+                <div class="enum-item">
+                  <div class="top">
+                    <div class="key"><code>--responses_api_stream</code><br>流式</div>
+                    <select id="pStream" onchange="onParamChange()">
+                      <option value="on" selected>开 — 边生成边回灌，首包更快</option>
+                      <option value="off">关 — 整段生成完再返回</option>
+                    </select>
+                  </div>
+                  <p class="enum-desc" id="dStream"></p>
+                </div>
+
+                <div class="enum-item">
+                  <div class="top">
+                    <div class="key"><code>--chat_size</code><br>保留轮数</div>
+                    <select id="pChatSize" onchange="onParamChange()">
+                      <option value="5">5 — 更省上下文 / 显存，短对话</option>
+                      <option value="10" selected>10 — 推荐（本工程默认）</option>
+                      <option value="20">20 — 更长记忆，更耗上下文</option>
+                      <option value="30">30 — 上游默认量级，可能触发摘要</option>
+                    </select>
+                  </div>
+                  <p class="enum-desc" id="dChatSize"></p>
+                </div>
+
+                <div class="enum-item">
+                  <div class="top">
+                    <div class="key"><code>--tts</code><br>出声引擎</div>
+                    <select id="pTts" onchange="onParamChange()">
+                      <option value="qwen3" selected>qwen3 — 本工程中文主路径</option>
+                      <option value="kokoro">kokoro — 轻量多语 TTS</option>
+                      <option value="chatTTS">chatTTS — ChatTTS</option>
+                      <option value="pocket">pocket — Pocket TTS</option>
+                      <option value="facebookMMS">facebookMMS — Facebook MMS</option>
+                    </select>
+                  </div>
+                  <p class="enum-desc" id="dTts"></p>
+                </div>
+
+                <div class="enum-item">
+                  <div class="top">
+                    <div class="key"><code>--qwen3_tts_backend</code><br>Qwen3 后端</div>
+                    <select id="pTtsBackend" onchange="onParamChange()">
+                      <option value="torch" selected>torch — NVIDIA / 通用（本工程）</option>
+                      <option value="ggml">ggml — qwentts.cpp 路径</option>
+                    </select>
+                  </div>
+                  <p class="enum-desc" id="dTtsBackend"></p>
+                </div>
+
+                <div class="enum-item">
+                  <div class="top">
+                    <div class="key"><code>--qwen3_tts_speaker</code><br>音色</div>
+                    <select id="pSpeaker" onchange="onParamChange()">
+                      <option value="Vivian" selected>Vivian — 本工程中文推荐</option>
+                      <option value="Aiden">Aiden — 上游 CustomVoice 默认示例</option>
+                      <option value="Serena">Serena — 其他预设（以模型支持列表为准）</option>
+                      <option value="Uncle_Fu">Uncle_Fu — 其他预设（以模型支持列表为准）</option>
+                    </select>
+                  </div>
+                  <p class="enum-desc" id="dSpeaker"></p>
+                </div>
+
+                <div class="enum-item">
+                  <div class="top">
+                    <div class="key"><code>--qwen3_tts_language</code><br>语言</div>
+                    <select id="pLang" onchange="onParamChange()">
+                      <option value="chinese" selected>chinese — 固定中文（本工程）</option>
+                      <option value="auto">auto — 自动检测（上游默认）</option>
+                      <option value="english">english — 英语</option>
+                    </select>
+                  </div>
+                  <p class="enum-desc" id="dLang"></p>
+                </div>
+
+                <div class="enum-item">
+                  <div class="top">
+                    <div class="key"><code>--qwen3_tts_instruct</code><br>说话风格</div>
+                    <select id="pInstructPreset" onchange="onInstructPreset()">
+                      <option value="calm" selected>平稳克制 — 本工程默认文案</option>
+                      <option value="bright">轻快清晰 — 语速略明快</option>
+                      <option value="custom">自定义 — 编辑下方文本</option>
+                    </select>
+                  </div>
+                  <textarea id="pInstruct" onchange="onParamChange()" oninput="onParamChange()">请用平稳、自然、克制的语气说话，保持均匀语速，避免夸张的音高变化，句末自然收束。</textarea>
+                  <p class="enum-desc" id="dInstruct"></p>
+                </div>
+
+                <div class="enum-item">
+                  <div class="top">
+                    <div class="key"><code>--device</code><br>计算设备</div>
+                    <select id="pDevice" onchange="onParamChange()">
+                      <option value="cuda" selected>cuda — NVIDIA GPU（本机 4080）</option>
+                      <option value="cpu">cpu — 仅 CPU，很慢，不推荐实时</option>
+                      <option value="mps">mps — Apple Silicon</option>
+                    </select>
+                  </div>
+                  <p class="enum-desc" id="dDevice"></p>
+                </div>
+
+                <div class="enum-item">
+                  <div class="top">
+                    <div class="key">Smart Turn</div>
+                    <div>
+                      <div class="toggle" style="margin-bottom:8px">
+                        <button type="button" class="switch" id="swSmart" onclick="toggleSmart(this)" aria-label="Smart Turn"></button>
+                        <span id="smartLabel">关闭（启动带 <code>--no_smart_turn</code>）</span>
+                      </div>
+                      <select id="pSmartMode" onchange="onSmartSelect()">
+                        <option value="off" selected>off — 关闭；打断靠 Silero VAD（推荐国内）</option>
+                        <option value="on">on — 开启；需下载 pipecat-ai/smart-turn-v3</option>
+                      </select>
+                    </div>
+                  </div>
+                  <p class="enum-desc" id="dSmart"></p>
+                </div>
+
+                <div class="enum-item">
+                  <div class="top">
+                    <div class="key"><code>PYTORCH_CUDA_ALLOC_CONF</code></div>
+                    <select id="pCudaAlloc" onchange="onParamChange()">
+                      <option value="expandable_segments:True" selected>expandable_segments:True — 减轻显存碎片（推荐）</option>
+                      <option value="none">不设置 — 使用 PyTorch 默认分配</option>
+                    </select>
+                  </div>
+                  <p class="enum-desc" id="dCudaAlloc"></p>
+                </div>
+
+                <div class="enum-item">
+                  <div class="top">
+                    <div class="key">远端 Key 来源</div>
+                    <select id="pKeySource" onchange="onParamChange()">
+                      <option value="dsh" selected>从 dsh 凭据读取 DEEPSEEK_API_KEY（推荐，不进仓库）</option>
+                      <option value="env">仅用当前进程环境变量</option>
+                      <option value="manual">设置页手工粘贴（预览占位）</option>
+                    </select>
+                  </div>
+                  <p class="enum-desc" id="dKeySource"></p>
+                </div>
               </div>
-              <p class="hint" style="margin-top:0">默认关闭：需从 Hugging Face 拉 <code>pipecat-ai/smart-turn-v3</code>，国内易超时。关闭时打断仍靠 Silero VAD。</p>
-              <table class="params">
-                <thead>
-                  <tr><th>参数</th><th>方案 B 示例</th><th>说明</th></tr>
-                </thead>
-                <tbody>
-                  <tr><td><code>--stt</code></td><td>paraformer</td><td>听写；别名解析为 Paraformer-zh</td></tr>
-                  <tr><td><code>--llm_backend</code></td><td>chat-completions</td><td>B：HTTP 兼容接口；A：transformers 本地加载</td></tr>
-                  <tr><td><code>--model_name</code></td><td>deepseek-chat</td><td>B：云端对话名；A：本地 4B 目录</td></tr>
-                  <tr><td><code>--responses_api_base_url</code></td><td>https://api.deepseek.com</td><td>仅 B</td></tr>
-                  <tr><td><code>--responses_api_stream</code></td><td>开</td><td>流式回复</td></tr>
-                  <tr><td><code>--chat_size</code></td><td>10</td><td>保留最近轮数，省上下文</td></tr>
-                  <tr><td><code>--tts</code> / <code>--qwen3_tts_*</code></td><td>0.6B + Vivian + chinese</td><td>出声模型、音色、语言、风格 instruct</td></tr>
-                  <tr><td><code>--device</code></td><td>cuda</td><td>NVIDIA GPU</td></tr>
-                  <tr><td><code>--no_smart_turn</code></td><td>默认带上</td><td>有此参数 = 关闭 Smart Turn</td></tr>
-                  <tr><td><code>PYTORCH_CUDA_ALLOC_CONF</code></td><td>expandable_segments:True</td><td>环境变量，减轻显存碎片</td></tr>
-                  <tr><td><code>DEEPSEEK_API_KEY</code></td><td>从 dsh 凭据读取</td><td>仅 B；勿写入仓库</td></tr>
-                </tbody>
-              </table>
-              <p class="hint" style="margin-top:12px">Gateway 五字段：Provider / URL 由本地模式自动填写；模型与音色留空（由上表管理）。</p>
+
+              <div class="cmd-preview" id="cmdPreview"></div>
+              <p class="hint" style="margin-top:10px">Gateway 仍只写 Provider=<code>speech-to-speech</code> 与 URL；上表参数写入本地启动配置，不塞进官方五字段。</p>
             </div>
           </details>
         </div>
@@ -640,6 +859,201 @@
     let scheme = 'B';
     let installed = false;
     let running = false;
+
+    const DESCS = {
+      stt: {
+        paraformer: '中文听写主路径；FunASR 别名解析为 Paraformer-zh，权重在 ModelScope 缓存。',
+        'parakeet-tdt': '上游默认之一，偏英文实时；本工程中文场景一般不用。',
+        'faster-whisper': 'CTranslate2 加速 Whisper；中文可用但与本工程预置权重不同。',
+        whisper: '原版 Whisper，更重更慢。',
+        'whisper-mlx': '仅 Apple MLX。',
+        'mlx-audio-whisper': '仅 Apple mlx-audio。',
+        none: '跳过 STT，把音频交给音频能力 LLM；必须配合 chat-completions。'
+      },
+      llmBackend: {
+        'chat-completions': '走 OpenAI 兼容 Chat Completions；方案 B 用 DeepSeek，工具调用较稳。',
+        transformers: '本机 transformers 加载权重；方案 A 用本地 Qwen3-4B。',
+        'responses-api': 'OpenAI Responses 风格；与 DeepSeek chat 路径不同。',
+        'mlx-lm': 'Apple Silicon 本地 LLM。'
+      },
+      modelName: {
+        'deepseek-chat': 'DeepSeek 对话模型，适合口语派任务；勿用推理模型当默认。',
+        'local-qwen3-4b': '映射到 $Root\\models\\Qwen3-4B-Instruct-2507；全精度，约占 8GB 磁盘 / ~9GB 显存。',
+        'deepseek-reasoner': '推理链更长，口语首包会慢，仅特殊场景。'
+      },
+      apiBase: {
+        'https://api.deepseek.com': 'DeepSeek 官方兼容基址（本工程方案 B）。',
+        'https://api.openai.com/v1': 'OpenAI 示例；需对应 Key 与模型名。',
+        custom: '实现时可弹出输入框；预览仍按 DeepSeek 生成命令。'
+      },
+      stream: {
+        on: '附加 --responses_api_stream，边生成边播。',
+        off: '不附加流式参数，整段完成后再出。'
+      },
+      chatSize: {
+        '5': '只留 5 轮，最省。',
+        '10': '本工程推荐，长开更稳。',
+        '20': '更长上下文，更占内存。',
+        '30': '接近上游默认，可能触发摘要。'
+      },
+      tts: {
+        qwen3: '本工程中文 TTS；配合 0.6B CustomVoice。',
+        kokoro: '轻量备选，非本工程预置。',
+        chatTTS: 'ChatTTS 备选。',
+        pocket: 'Pocket TTS 备选。',
+        facebookMMS: 'Facebook MMS 备选。'
+      },
+      ttsBackend: {
+        torch: 'CUDA/CPU torch 路径（Windows + NVIDIA）。',
+        ggml: 'ggml / qwentts.cpp，需另配。'
+      },
+      speaker: {
+        Vivian: '本工程中文音色。',
+        Aiden: '上游文档默认示例名。',
+        Serena: '以模型 get_supported_speakers 为准。',
+        Uncle_Fu: '以模型 get_supported_speakers 为准。'
+      },
+      lang: {
+        chinese: '固定中文合成。',
+        auto: '上游默认自动语言。',
+        english: '英语合成。'
+      },
+      instruct: {
+        calm: '平稳自然克制（默认文案）。',
+        bright: '可换成更轻快的 instruct。',
+        custom: '完全自定义风格提示。'
+      },
+      device: {
+        cuda: 'NVIDIA GPU，本机推荐。',
+        cpu: '可跑但不适合实时。',
+        mps: 'Apple GPU。'
+      },
+      smart: {
+        off: '启动带 --no_smart_turn；国内免拉 HF；打断靠 Silero。',
+        on: '去掉 --no_smart_turn；需 pipecat-ai/smart-turn-v3，HF 易超时。'
+      },
+      cudaAlloc: {
+        'expandable_segments:True': '环境变量，减轻长时间运行碎片。',
+        none: '不设置该环境变量。'
+      },
+      keySource: {
+        dsh: '从 %USERPROFILE%\\.dsh\\.credentials.yaml 读 Key，不写进 git。',
+        env: '依赖你已在 shell 里 export 的变量。',
+        manual: '设置页粘贴；注意勿提交配置文件。'
+      }
+    };
+
+    const INSTRUCT = {
+      calm: '请用平稳、自然、克制的语气说话，保持均匀语速，避免夸张的音高变化，句末自然收束。',
+      bright: '请用清晰、轻快、自然的语气说话，语速略明快，避免拖沓。',
+      custom: ''
+    };
+
+    function val(id) { return document.getElementById(id).value; }
+
+    function setDesc(id, map, key) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.innerHTML = '<strong>当前档：</strong>' + (map[key] || '');
+    }
+
+    function onInstructPreset() {
+      const p = val('pInstructPreset');
+      const ta = document.getElementById('pInstruct');
+      if (p !== 'custom') ta.value = INSTRUCT[p];
+      onParamChange();
+    }
+
+    function onSmartSelect() {
+      const on = val('pSmartMode') === 'on';
+      document.getElementById('swSmart').classList.toggle('on', on);
+      document.getElementById('smartLabel').innerHTML = on
+        ? '开启（不带 <code>--no_smart_turn</code>）'
+        : '关闭（启动带 <code>--no_smart_turn</code>）';
+      document.getElementById('pipeSmart').textContent = on ? '开启 · 需 HF 模型' : '可选 · 当前关';
+      onParamChange();
+    }
+
+    function toggleSmart(el) {
+      el.classList.toggle('on');
+      const on = el.classList.contains('on');
+      document.getElementById('pSmartMode').value = on ? 'on' : 'off';
+      onSmartSelect();
+    }
+
+    function resolveModelPath() {
+      const root = document.getElementById('installRoot').value;
+      if (val('pModelName') === 'local-qwen3-4b') {
+        return root + '\\models\\Qwen3-4B-Instruct-2507';
+      }
+      return val('pModelName');
+    }
+
+    function buildCmd() {
+      const root = document.getElementById('installRoot').value;
+      const ttsModel = root + '\\models\\Qwen3-TTS-12Hz-0.6B-CustomVoice';
+      const lines = [];
+      if (val('pCudaAlloc') !== 'none') {
+        lines.push('set PYTORCH_CUDA_ALLOC_CONF=' + val('pCudaAlloc'));
+      }
+      if (val('pLlmBackend') === 'chat-completions' || val('pLlmBackend') === 'responses-api') {
+        lines.push('REM Key: ' + val('pKeySource'));
+      }
+      let cmd = 'speech-to-speech';
+      cmd += ' --stt ' + val('pStt');
+      cmd += ' --llm_backend ' + val('pLlmBackend');
+      cmd += ' --model_name "' + resolveModelPath() + '"';
+      if (val('pLlmBackend') === 'chat-completions' || val('pLlmBackend') === 'responses-api') {
+        const base = val('pApiBase') === 'custom' ? 'https://api.deepseek.com' : val('pApiBase');
+        cmd += ' --responses_api_base_url ' + base;
+        if (val('pStream') === 'on') cmd += ' --responses_api_stream';
+      }
+      cmd += ' --chat_size ' + val('pChatSize');
+      cmd += ' --tts ' + val('pTts');
+      if (val('pTts') === 'qwen3') {
+        cmd += ' --qwen3_tts_backend ' + val('pTtsBackend');
+        cmd += ' --qwen3_tts_model_name "' + ttsModel + '"';
+        cmd += ' --qwen3_tts_speaker ' + val('pSpeaker');
+        cmd += ' --qwen3_tts_language ' + val('pLang');
+        cmd += ' --qwen3_tts_instruct "' + document.getElementById('pInstruct').value.replace(/"/g, '\\"') + '"';
+      }
+      cmd += ' --device ' + val('pDevice');
+      if (val('pSmartMode') === 'off') cmd += ' --no_smart_turn';
+      lines.push(cmd);
+      return lines.join('\n');
+    }
+
+    function onParamChange() {
+      setDesc('dStt', DESCS.stt, val('pStt'));
+      setDesc('dLlmBackend', DESCS.llmBackend, val('pLlmBackend'));
+      setDesc('dModelName', DESCS.modelName, val('pModelName'));
+      setDesc('dApiBase', DESCS.apiBase, val('pApiBase'));
+      setDesc('dStream', DESCS.stream, val('pStream'));
+      setDesc('dChatSize', DESCS.chatSize, val('pChatSize'));
+      setDesc('dTts', DESCS.tts, val('pTts'));
+      setDesc('dTtsBackend', DESCS.ttsBackend, val('pTtsBackend'));
+      setDesc('dSpeaker', DESCS.speaker, val('pSpeaker'));
+      setDesc('dLang', DESCS.lang, val('pLang'));
+      setDesc('dInstruct', DESCS.instruct, val('pInstructPreset'));
+      setDesc('dDevice', DESCS.device, val('pDevice'));
+      setDesc('dSmart', DESCS.smart, val('pSmartMode'));
+      setDesc('dCudaAlloc', DESCS.cudaAlloc, val('pCudaAlloc'));
+      setDesc('dKeySource', DESCS.keySource, val('pKeySource'));
+
+      const remote = val('pLlmBackend') === 'chat-completions' || val('pLlmBackend') === 'responses-api';
+      document.getElementById('pApiBase').disabled = !remote;
+      document.getElementById('pStream').disabled = !remote;
+      document.getElementById('pKeySource').disabled = !remote;
+      document.getElementById('pTtsBackend').disabled = val('pTts') !== 'qwen3';
+      document.getElementById('pSpeaker').disabled = val('pTts') !== 'qwen3';
+      document.getElementById('pLang').disabled = val('pTts') !== 'qwen3';
+      document.getElementById('pInstructPreset').disabled = val('pTts') !== 'qwen3';
+      document.getElementById('pInstruct').disabled = val('pTts') !== 'qwen3';
+
+      document.getElementById('cmdPreview').textContent = buildCmd();
+      document.getElementById('pipeLlm').textContent =
+        val('pLlmBackend') === 'transformers' ? 'Qwen3-4B 本地' : 'DeepSeek / 远端 LLM';
+    }
 
     function setMode(m) {
       mode = m;
@@ -660,8 +1074,16 @@
       scheme = s;
       document.getElementById('schA').classList.toggle('active', s === 'A');
       document.getElementById('schB').classList.toggle('active', s === 'B');
-      document.getElementById('pipeLlm').textContent = s === 'A' ? 'Qwen3-4B 本地' : 'DeepSeek 云端';
       document.getElementById('env4b').classList.toggle('hidden', s !== 'A');
+      if (s === 'A') {
+        document.getElementById('pLlmBackend').value = 'transformers';
+        document.getElementById('pModelName').value = 'local-qwen3-4b';
+      } else {
+        document.getElementById('pLlmBackend').value = 'chat-completions';
+        document.getElementById('pModelName').value = 'deepseek-chat';
+        document.getElementById('pApiBase').value = 'https://api.deepseek.com';
+      }
+      onParamChange();
     }
 
     function setDots(kind, text) {
@@ -704,7 +1126,7 @@
         '安装 speech-to-speech[paraformer]',
         '下载 Paraformer / TTS' + (scheme === 'A' ? ' / Qwen3-4B' : ''),
         '同步 ModelScope 缓存',
-        '写入本地配置'
+        '写入本地启动枚举配置'
       ];
       let i = 0;
       const t = setInterval(() => {
@@ -725,7 +1147,7 @@
 
     function mockStart() {
       running = true;
-      document.getElementById('log').textContent += '启动 speech-to-speech … 监听 ws://127.0.0.1:8765/v1/realtime\n';
+      document.getElementById('log').textContent += '启动…\n' + buildCmd() + '\n';
       refreshLocalStatus();
     }
     function mockStop() {
@@ -748,15 +1170,10 @@
       refreshLocalStatus();
     }
 
-    function toggleSmart(el) {
-      el.classList.toggle('on');
-      const on = el.classList.contains('on');
-      document.getElementById('pipeSmart').textContent = on ? '开启 · 需 HF 模型' : '可选 · 当前关';
-    }
-
-    // default local
     setMode('local');
     setScheme('B');
+    onSmartSelect();
+    onParamChange();
   </script>
 </body>
 </html>
