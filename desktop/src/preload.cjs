@@ -118,6 +118,24 @@ contextBridge.exposeInMainWorld('qwenAudioAgentDesktop', {
     'qwen-audio-agent:settings-save',
     settings,
   ),
+  localVoiceStatus: () => ipcRenderer.invoke(
+    'qwen-audio-agent:local-voice-status',
+  ),
+  localVoiceSave: config => ipcRenderer.invoke(
+    'qwen-audio-agent:local-voice-save',
+    config,
+  ),
+  localVoiceVerify: config => ipcRenderer.invoke(
+    'qwen-audio-agent:local-voice-verify',
+    config,
+  ),
+  localVoiceStart: config => ipcRenderer.invoke(
+    'qwen-audio-agent:local-voice-start',
+    config,
+  ),
+  localVoiceStop: () => ipcRenderer.invoke(
+    'qwen-audio-agent:local-voice-stop',
+  ),
   importSkin: () => ipcRenderer.invoke('qwen-audio-agent:skin-import'),
   removeSkin: id => ipcRenderer.invoke('qwen-audio-agent:skin-remove', id),
   setNodePath: nodePath => ipcRenderer.invoke(

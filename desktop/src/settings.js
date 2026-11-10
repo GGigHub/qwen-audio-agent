@@ -21,6 +21,13 @@ import {
   localizeDesktopDocument,
   localizeDesktopError,
 } from './i18n.mjs'
+import {
+  LOCAL_VOICE_ENUMS,
+  LOCAL_VOICE_DEFAULTS,
+  applyLocalVoiceScheme,
+  buildLocalVoiceLaunchArgs,
+  normalizeLocalVoiceConfig,
+} from './local-voice/definitions.mjs'
 
 const form = document.querySelector('#settings-form')
 const gatewayUrl = document.querySelector('#gateway-url')
@@ -98,6 +105,189 @@ const realtimeForm = createRealtimeSettingsForm({
   translate: t,
   openExternal: url => window.qwenAudioAgentDesktop.openExternal(url),
   onChange: () => { showMessage(''); updateApplyState() },
+})
+
+const cloudVoicePanel = document.querySelector('#cloud-voice-panel')
+const localVoicePanel = document.querySelector('#local-voice-panel')
+const voiceModeCloud = document.querySelector('#voice-mode-cloud')
+const voiceModeLocal = document.querySelector('#voice-mode-local')
+const localInstallRoot = document.querySelector('#local-install-root')
+const localVoiceStatusText = document.querySelector('#local-voice-status-text')
+const localVoiceAdvancedFields = document.querySelector('#local-voice-advanced-fields')
+const localVoiceCmd = document.querySelector('#local-voice-cmd')
+const localSchemeInputs = [...document.querySelectorAll('input[name="local-scheme"]')]
+let localVoiceConfig = normalizeLocalVoiceConfig()
+let localVoiceStatus = null
+
+const LOCAL_ADVANCED_FIELDS = [
+  ['stt', '听写 --stt', LOCAL_VOICE_ENUMS.stt],
+  ['llmBackend', '闲聊后端 --llm_backend', LOCAL_VOICE_ENUMS.llmBackend],
+  ['modelName', '对话模型 --model_name', LOCAL_VOICE_ENUMS.modelName],
+  ['apiBaseUrl', '远端 API', LOCAL_VOICE_ENUMS.apiBaseUrl],
+  ['chatSize', '保留轮数 --chat_size', LOCAL_VOICE_ENUMS.chatSize],
+  ['tts', '出声 --tts', LOCAL_VOICE_ENUMS.tts],
+  ['ttsBackend', 'Qwen3 后端', LOCAL_VOICE_ENUMS.ttsBackend],
+  ['speaker', '音色', LOCAL_VOICE_ENUMS.speaker],
+  ['language', '语言', LOCAL_VOICE_ENUMS.language],
+  ['device', '设备 --device', LOCAL_VOICE_ENUMS.device],
+  ['keySource', 'Key 来源', LOCAL_VOICE_ENUMS.keySource],
+]
+
+function renderLocalVoiceAdvanced() {
+  localVoiceAdvancedFields.replaceChildren()
+  for (const [key, label, options] of LOCAL_ADVANCED_FIELDS) {
+    const row = document.createElement('div')
+    row.className = 'setting-row'
+    const lab = document.createElement('label')
+    lab.textContent = t(label)
+    lab.htmlFor = `local-voice-${key}`
+    const select = document.createElement('select')
+    select.id = lab.htmlFor
+    select.dataset.localVoice = key
+    for (const option of options) {
+      const node = document.createElement('option')
+      node.value = String(option.value)
+      node.textContent = `${option.label} — ${option.description}`
+      select.append(node)
+    }
+    select.value = String(localVoiceConfig[key] ?? LOCAL_VOICE_DEFAULTS[key])
+    select.addEventListener('change', () => {
+      localVoiceConfig = normalizeLocalVoiceConfig({
+        ...localVoiceConfig,
+        [key]: key === 'chatSize' ? Number(select.value) : select.value,
+      })
+      renderLocalVoiceCmd()
+      updateApplyState()
+    })
+    const hint = document.createElement('p')
+    hint.className = 'setting-hint'
+    const selected = options.find(option => String(option.value) === select.value)
+    hint.textContent = selected?.description || ''
+    select.addEventListener('change', () => {
+      const next = options.find(option => String(option.value) === select.value)
+      hint.textContent = next?.description || ''
+    })
+    row.append(lab, select, hint)
+    localVoiceAdvancedFields.append(row)
+  }
+  const smartRow = document.createElement('div')
+  smartRow.className = 'setting-row'
+  const smartLabel = document.createElement('label')
+  smartLabel.textContent = t('Smart Turn')
+  smartLabel.htmlFor = 'local-voice-smart-turn'
+  const smartSelect = document.createElement('select')
+  smartSelect.id = smartLabel.htmlFor
+  smartSelect.innerHTML = `
+    <option value="false">off — 关闭；启动带 --no_smart_turn（推荐国内）</option>
+    <option value="true">on — 开启；需下载 Hugging Face smart-turn 模型</option>
+  `
+  smartSelect.value = String(Boolean(localVoiceConfig.smartTurn))
+  smartSelect.addEventListener('change', () => {
+    localVoiceConfig = normalizeLocalVoiceConfig({
+      ...localVoiceConfig,
+      smartTurn: smartSelect.value === 'true',
+    })
+    renderLocalVoiceCmd()
+    updateApplyState()
+  })
+  smartRow.append(smartLabel, smartSelect)
+  localVoiceAdvancedFields.append(smartRow)
+  renderLocalVoiceCmd()
+}
+
+function renderLocalVoiceCmd() {
+  const args = buildLocalVoiceLaunchArgs(localVoiceConfig)
+  localVoiceCmd.textContent = `speech-to-speech ${args.map(part => (
+    /\s/.test(part) ? `"${part.replaceAll('"', '\\"')}"` : part
+  )).join(' ')}`
+}
+
+function renderLocalVoiceStatus(status = localVoiceStatus) {
+  localVoiceStatus = status
+  if (!status) {
+    localVoiceStatusText.textContent = t('状态：未检测')
+    return
+  }
+  const phase = {
+    missing: t('未安装'),
+    stopped: t('已安装未运行'),
+    running: t('运行中（8765）'),
+  }[status.phase] || status.phase
+  localVoiceStatusText.textContent = t('状态：{phase}', { phase })
+}
+
+function setVoiceMode(mode, { persistHint = true } = {}) {
+  localVoiceConfig = normalizeLocalVoiceConfig({ ...localVoiceConfig, mode })
+  voiceModeCloud.classList.toggle('active', mode === 'cloud')
+  voiceModeLocal.classList.toggle('active', mode === 'local')
+  cloudVoicePanel.hidden = mode === 'local'
+  localVoicePanel.hidden = mode !== 'local'
+  if (persistHint) updateApplyState()
+}
+
+function syncLocalSchemeUi() {
+  for (const input of localSchemeInputs) {
+    input.checked = input.value === localVoiceConfig.scheme
+    input.closest('.local-scheme')?.classList.toggle('active', input.checked)
+  }
+}
+
+for (const button of [voiceModeCloud, voiceModeLocal]) {
+  button.addEventListener('click', () => {
+    setVoiceMode(button.dataset.voiceMode)
+    showMessage('')
+  })
+}
+
+for (const input of localSchemeInputs) {
+  input.addEventListener('change', () => {
+    localVoiceConfig = applyLocalVoiceScheme(localVoiceConfig, input.value)
+    syncLocalSchemeUi()
+    renderLocalVoiceAdvanced()
+    updateApplyState()
+  })
+}
+
+localInstallRoot.addEventListener('input', () => {
+  localVoiceConfig = normalizeLocalVoiceConfig({
+    ...localVoiceConfig,
+    installRoot: localInstallRoot.value.trim(),
+  })
+  renderLocalVoiceCmd()
+  updateApplyState()
+})
+
+document.querySelector('#local-voice-verify').addEventListener('click', async () => {
+  try {
+    const result = await window.qwenAudioAgentDesktop.localVoiceVerify(localVoiceConfig)
+    localVoiceConfig = normalizeLocalVoiceConfig(result.config || localVoiceConfig)
+    renderLocalVoiceStatus(result)
+    showMessage(result.message || t('检测完成'), result.ok ? 'success' : 'notice')
+  } catch (error) {
+    showMessage(friendlyError(error, t('检测失败')), 'error')
+  }
+})
+
+document.querySelector('#local-voice-start').addEventListener('click', async () => {
+  showMessage(t('正在启动本地语音…'))
+  try {
+    const result = await window.qwenAudioAgentDesktop.localVoiceStart(localVoiceConfig)
+    localVoiceConfig = normalizeLocalVoiceConfig(result.config || localVoiceConfig)
+    renderLocalVoiceStatus(result)
+    showMessage(t('本地语音已启动'), 'success')
+  } catch (error) {
+    showMessage(friendlyError(error, t('启动失败')), 'error')
+  }
+})
+
+document.querySelector('#local-voice-stop').addEventListener('click', async () => {
+  try {
+    const result = await window.qwenAudioAgentDesktop.localVoiceStop()
+    renderLocalVoiceStatus(result)
+    showMessage(t('本地语音已停止'), 'notice')
+  } catch (error) {
+    showMessage(friendlyError(error, t('停止失败')), 'error')
+  }
 })
 
 function selectSettingsTab(value, { focus = false } = {}) {
@@ -986,6 +1176,11 @@ function render() {
   backendCredential.value = settings.backendCredential || ''
   renderBackendConnection()
   nodePathInput.value = settings.nodePath || ''
+  localInstallRoot.value = localVoiceConfig.installRoot || ''
+  syncLocalSchemeUi()
+  renderLocalVoiceAdvanced()
+  setVoiceMode(localVoiceConfig.mode, { persistHint: false })
+  renderLocalVoiceStatus(localVoiceStatus)
   renderRuntime()
   appliedFingerprint = fingerprint(formSettings())
   updateApplyState()
@@ -1111,11 +1306,19 @@ form.addEventListener('submit', async event => {
   updateApplyState()
   showMessage(t('正在应用…'))
   try {
+    localVoiceConfig = normalizeLocalVoiceConfig({
+      ...localVoiceConfig,
+      installRoot: localInstallRoot.value.trim(),
+    })
+    const localSaved = await window.qwenAudioAgentDesktop.localVoiceSave(localVoiceConfig)
+    localVoiceConfig = normalizeLocalVoiceConfig(localSaved.config || localVoiceConfig)
+    localVoiceStatus = localSaved
     const result = await window.qwenAudioAgentDesktop.saveSettings(formSettings())
     settings = result.settings
     realtimeModelCatalogs = result.realtimeModelCatalogs
     realtimeConfigurationPending = result.realtimeConfigurationPending === true
     runtime = result.runtime
+    if (result.localVoice) localVoiceStatus = result.localVoice
     renderWakeShortcutStatus(result.wakeShortcutRegistered)
     render()
     if (!runtime.gatewayConnected) {
@@ -1152,6 +1355,12 @@ window.qwenAudioAgentDesktop.loadSettings().then(value => {
   })
   skins = value.skins || []
   runtime = value.runtime
+  localVoiceStatus = value.localVoice || null
+  localVoiceConfig = normalizeLocalVoiceConfig(value.localVoice?.config || {
+    ...LOCAL_VOICE_DEFAULTS,
+    installRoot: 'F:\\GitProjects\\qwenAudioAgent',
+    mode: settings.realtimeProvider === 'speech-to-speech' ? 'local' : 'cloud',
+  })
   renderWakeShortcutStatus(value.wakeShortcutRegistered)
   render()
   void detectBackendOptions()
