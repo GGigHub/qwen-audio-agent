@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>语音前台设置 · UI 预览（云端 / 本地）</title>
+  <style>
+    :root {
+      --bg: #1a1b1e;
+      --panel: #25262b;
+      --panel-2: #2c2e33;
+      --border: #3a3b40;
+      --text: #e8e8ea;
+      --muted: #9a9aa0;
+      --accent: #5b7cfa;
+      --accent-dim: #3d54b0;
+      --ok: #3dd68c;
+      --warn: #f5a524;
+      --bad: #f31260;
+      --chip: #34353b;
+      --radius: 10px;
+      --font: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: #121316;
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .page {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 24px 20px 64px;
+    }
+    .banner {
+      background: #2a3148;
+      border: 1px solid #3d4a6e;
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      color: #c5ceed;
+      line-height: 1.5;
+    }
+    .banner strong { color: #fff; }
+    .window {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 16px 48px rgba(0,0,0,.45);
+    }
+    .titlebar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+    }
+    .titlebar h1 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .titlebar .ver { color: var(--muted); font-size: 12px; }
+    .body { padding: 18px; }
+    .subtitle {
+      margin: 0 0 16px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    /* status row */
+    .status-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+    .status-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+    }
+    .status-card .label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    .status-card .value {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted); flex-shrink: 0;
+    }
+    .dot.ok { background: var(--ok); }
+    .dot.bad { background: var(--bad); }
+    .dot.warn { background: var(--warn); }
+
+    /* tabs */
+    .tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 16px;
+      background: var(--panel);
+      padding: 4px;
+      border-radius: var(--radius);
+      width: fit-content;
+    }
+    .tab {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      padding: 8px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .tab.active {
+      background: #1e3a8a;
+      color: #fff;
+    }
+
+    /* mode switch */
+    .mode-switch {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+    .mode-card {
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: var(--radius);
+      padding: 14px;
+      cursor: pointer;
+      text-align: left;
+      color: inherit;
+      font: inherit;
+    }
+    .mode-card:hover { border-color: #555; }
+    .mode-card.active {
+      border-color: var(--accent);
+      background: #1f2740;
+      box-shadow: inset 0 0 0 1px var(--accent-dim);
+    }
+    .mode-card h3 {
+      margin: 0 0 6px;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .mode-card p {
+      margin: 0;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .badge {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: var(--chip);
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .badge.new { background: #243b2e; color: var(--ok); }
+
+    .section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    .section h2 {
+      margin: 0 0 12px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+    }
+    .section .hint {
+      margin: -6px 0 12px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .field {
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .field label { font-size: 13px; color: var(--muted); }
+    .field input, .field select, .field textarea {
+      width: 100%;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 8px 10px;
+      font: inherit;
+      font-size: 13px;
+    }
+    .field input:disabled, .field select:disabled {
+      opacity: .55;
+    }
+    .field .aside {
+      grid-column: 2;
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: -4px;
+    }
+    .row-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    button.btn {
+      border: 0;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { filter: brightness(1.08); }
+    .btn-primary:disabled { opacity: .45; cursor: not-allowed; }
+    .btn-ghost {
+      background: var(--chip);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-danger { background: #4a1d2b; color: #ffb3c7; }
+
+    .chain {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      font-size: 12px;
+    }
+    .chain .node {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      min-width: 120px;
+    }
+    .chain .node strong { display: block; font-size: 12px; margin-bottom: 2px; }
+    .chain .node span { color: var(--muted); }
+    .chain .arrow { color: var(--muted); }
+
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+    }
+    .pipe {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 12px;
+    }
+    .pipe strong { display: block; margin-bottom: 4px; }
+    .pipe span { color: var(--muted); line-height: 1.35; display: block; }
+
+    .scheme {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .scheme label {
+      display: block;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      cursor: pointer;
+      background: var(--panel-2);
+    }
+    .scheme label.active {
+      border-color: var(--accent);
+      background: #1f2740;
+    }
+    .scheme input { margin-right: 6px; }
+    .scheme .t { font-size: 13px; font-weight: 600; }
+    .scheme .d { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+
+    .progress {
+      height: 8px;
+      background: #1a1b1e;
+      border-radius: 999px;
+      overflow: hidden;
+      margin: 8px 0;
+    }
+    .progress > i {
+      display: block;
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), #8aa4ff);
+      transition: width .3s;
+    }
+    .log {
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 11px;
+      background: #121316;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      max-height: 120px;
+      overflow: auto;
+      color: #b8c0d0;
+      white-space: pre-wrap;
+    }
+
+    details.advanced {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--panel);
+      margin-bottom: 14px;
+    }
+    details.advanced > summary {
+      cursor: pointer;
+      padding: 12px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      list-style: none;
+    }
+    details.advanced > summary::-webkit-details-marker { display: none; }
+    details.advanced > summary::after {
+      content: "展开";
+      float: right;
+      color: var(--muted);
+      font-weight: 400;
+      font-size: 12px;
+    }
+    details.advanced[open] > summary::after { content: "收起"; }
+    .adv-body { padding: 0 16px 16px; }
+    table.params {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    table.params th, table.params td {
+      border-bottom: 1px solid var(--border);
+      padding: 8px 6px;
+      text-align: left;
+      vertical-align: top;
+    }
+    table.params th { color: var(--muted); font-weight: 500; }
+    table.params code {
+      background: var(--chip);
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+    .toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+    .switch {
+      width: 36px; height: 20px;
+      background: #444;
+      border-radius: 999px;
+      position: relative;
+      cursor: pointer;
+      border: 0;
+    }
+    .switch.on { background: var(--accent); }
+    .switch::after {
+      content: "";
+      position: absolute;
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: #fff;
+      top: 2px; left: 2px;
+      transition: left .15s;
+    }
+    .switch.on::after { left: 18px; }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 8px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+    .footer .msg { font-size: 12px; color: var(--muted); }
+
+    .hidden { display: none !important; }
+
+    .checklist {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      font-size: 12px;
+    }
+    .checklist li {
+      display: flex;
+      gap: 8px;
+      padding: 6px 0;
+      border-bottom: 1px dashed var(--border);
+      color: var(--muted);
+    }
+    .checklist li.done { color: var(--ok); }
+    .checklist li::before { content: "○"; }
+    .checklist li.done::before { content: "●"; }
+
+    @media (max-width: 720px) {
+      .status-row, .mode-switch, .scheme, .pipeline { grid-template-columns: 1fr; }
+      .field { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="banner">
+      <strong>UI 预览（非真实应用）</strong> —
+      分支 <code>feature/local-voice-frontend-ui</code>。
+      目标：在「语音前台」用<strong>云端模型 / 本地模型</strong>对齐用户心智；本地 = speech-to-speech 流水线（安装目录、环境检查、一键安装、启动参数说明）。
+      点下方卡片可切换预览状态。确认布局够全面后，再改真实桌面设置页。
+    </div>
+
+    <div class="window">
+      <div class="titlebar">
+        <h1>设置</h1>
+        <span class="ver">预览 · 2.1.0+</span>
+      </div>
+      <div class="body">
+        <p class="subtitle">管理语音前台、后台 Agent 与桌面应用。</p>
+
+        <div class="status-row">
+          <div class="status-card">
+            <div class="label">Gateway</div>
+            <div class="value"><span class="dot ok" id="dotGw"></span><span id="txtGw">127.0.0.1:3101 · 已连接</span></div>
+          </div>
+          <div class="status-card">
+            <div class="label">语音前台</div>
+            <div class="value"><span class="dot warn" id="dotVoice"></span><span id="txtVoice">本地模型 · 未安装</span></div>
+          </div>
+          <div class="status-card">
+            <div class="label">后台 Agent</div>
+            <div class="value"><span class="dot ok"></span><span>DeepSeek · 已就绪</span></div>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <button class="tab active" type="button">语音前台</button>
+          <button class="tab" type="button" disabled title="预览未展开">后台 Agent</button>
+          <button class="tab" type="button" disabled title="预览未展开">应用程序</button>
+        </div>
+
+        <div class="section">
+          <h2>整条链路（给用户看的）</h2>
+          <div class="chain">
+            <div class="node"><strong>你</strong><span>说话 / 听回复</span></div>
+            <span class="arrow">→</span>
+            <div class="node"><strong>桌面客户端</strong><span>麦 · 扬声器 · 面板</span></div>
+            <span class="arrow">→</span>
+            <div class="node"><strong>Gateway</strong><span>:3101 编排</span></div>
+            <span class="arrow">→</span>
+            <div class="node"><strong>语音前台</strong><span id="chainVoice">云端或本地</span></div>
+            <span class="arrow">+</span>
+            <div class="node"><strong>后台 Agent</strong><span>dsh 办事</span></div>
+          </div>
+        </div>
+
+        <div class="mode-switch">
+          <button type="button" class="mode-card" id="modeCloud" onclick="setMode('cloud')">
+            <h3>云端模型 <span class="badge">现有</span></h3>
+            <p>DashScope、StepFun、GPT-Live、Google Live、豆包等。填 API Key 即可，无需本机 GPU 权重。</p>
+          </button>
+          <button type="button" class="mode-card active" id="modeLocal" onclick="setMode('local')">
+            <h3>本地模型 <span class="badge new">新增</span></h3>
+            <p>本机 speech-to-speech 流水线：听写 +（可选）本地/云端闲聊 LLM + TTS。Gateway 只连本机 8765。</p>
+          </button>
+        </div>
+
+        <!-- CLOUD PANEL -->
+        <div id="panelCloud" class="hidden">
+          <div class="section">
+            <h2>云端连接</h2>
+            <div class="field">
+              <label>供应商</label>
+              <select>
+                <option>DashScope</option>
+                <option>StepFun</option>
+                <option>GPT-Live</option>
+                <option>Google Live</option>
+                <option>Doubao Seeduplex</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>模型</label>
+              <select><option>qwen-audio-3.1-realtime-plus</option></select>
+            </div>
+            <div class="field">
+              <label>API Key</label>
+              <input type="password" placeholder="必填" value="" />
+            </div>
+            <div class="field">
+              <label>服务地址</label>
+              <input placeholder="留空使用默认" />
+            </div>
+            <div class="field">
+              <label>音色</label>
+              <input placeholder="留空使用默认" />
+            </div>
+          </div>
+        </div>
+
+        <!-- LOCAL PANEL -->
+        <div id="panelLocal">
+          <div class="section">
+            <h2>本地语音流水线</h2>
+            <p class="hint">不是单个模型，而是多段组合。Gateway 写入 provider=<code>speech-to-speech</code>，地址固定本机 WebSocket。</p>
+            <div class="pipeline">
+              <div class="pipe"><strong>VAD</strong><span>Silero · 是否在说话</span></div>
+              <div class="pipe"><strong>听写 STT</strong><span>Paraformer-zh · 本地</span></div>
+              <div class="pipe"><strong>闲聊 LLM</strong><span id="pipeLlm">方案决定</span></div>
+              <div class="pipe"><strong>出声 TTS</strong><span>Qwen3-TTS 0.6B</span></div>
+              <div class="pipe"><strong>Smart Turn</strong><span id="pipeSmart">可选 · 当前关</span></div>
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>运行方案</h2>
+            <div class="scheme">
+              <label class="active" id="schB">
+                <input type="radio" name="scheme" value="B" checked onchange="setScheme('B')" />
+                <div class="t">方案 B · 推荐</div>
+                <div class="d">听写/TTS 本地；闲聊 LLM 走 DeepSeek（与 dsh 可共用 Key）。显存约 3 GB，磁盘更小。</div>
+              </label>
+              <label id="schA">
+                <input type="radio" name="scheme" value="A" onchange="setScheme('A')" />
+                <div class="t">方案 A · 全本地</div>
+                <div class="d">闲聊也用本机 Qwen3-4B。显存约 12 GB，权重大约多 8 GB。</div>
+              </label>
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>安装位置与环境</h2>
+            <div class="field">
+              <label>安装根目录</label>
+              <div style="display:flex;gap:8px">
+                <input id="installRoot" value="F:\GitProjects\qwenAudioAgent" style="flex:1" />
+                <button type="button" class="btn btn-ghost">浏览…</button>
+              </div>
+              <div class="aside">其下使用 <code>venv\</code> 与 <code>models\</code>；不装进桌面 Program Files。</div>
+            </div>
+            <div class="field">
+              <label>Realtime 地址</label>
+              <input value="ws://127.0.0.1:8765/v1/realtime" disabled />
+              <div class="aside">仅本机；手机远程连 Gateway :3101，不直接连 8765。</div>
+            </div>
+            <ul class="checklist" id="envList">
+              <li class="done">NVIDIA GPU / 驱动</li>
+              <li class="done">Python 3.12（将创建工程 venv）</li>
+              <li>CUDA 版 PyTorch（安装向导写入 venv）</li>
+              <li>speech-to-speech[paraformer]（指定修订）</li>
+              <li>模型权重（魔搭优先）</li>
+              <li id="env4b" class="hidden">方案 A：Qwen3-4B-Instruct-2507 ≈ 8 GB</li>
+            </ul>
+            <div class="row-actions">
+              <button type="button" class="btn btn-primary" id="btnInstall" onclick="mockInstall()">一键安装 / 更新本地语音</button>
+              <button type="button" class="btn btn-ghost" onclick="mockCheck()">重新检测环境</button>
+            </div>
+            <div class="progress"><i id="bar"></i></div>
+            <div class="log" id="log">等待安装…\n预计磁盘：方案 B 数 GB；含方案 A 约 15 GB 量级。\n模型不进入 git。</div>
+          </div>
+
+          <div class="section">
+            <h2>服务控制</h2>
+            <p class="hint">对应工程脚本 <code>scripts/start-local.ps1 -SpeechWorker</code>。窗口标题「语音服务（请勿关闭）」。</p>
+            <div class="row-actions">
+              <button type="button" class="btn btn-primary" id="btnStart" onclick="mockStart()" disabled>启动本地语音</button>
+              <button type="button" class="btn btn-danger" id="btnStop" onclick="mockStop()" disabled>停止</button>
+              <button type="button" class="btn btn-ghost" onclick="setPreviewState('running')">模拟：已在跑</button>
+              <button type="button" class="btn btn-ghost" onclick="setPreviewState('error')">模拟：连接异常</button>
+              <button type="button" class="btn btn-ghost" onclick="setPreviewState('fresh')">模拟：未安装</button>
+            </div>
+          </div>
+
+          <details class="advanced" open>
+            <summary>高级 · 启动参数说明</summary>
+            <div class="adv-body">
+              <div style="margin-bottom:12px" class="toggle">
+                <button type="button" class="switch" id="swSmart" onclick="toggleSmart(this)" aria-label="Smart Turn"></button>
+                <span>启用 Smart Turn（去掉 <code>--no_smart_turn</code>）</span>
+              </div>
+              <p class="hint" style="margin-top:0">默认关闭：需从 Hugging Face 拉 <code>pipecat-ai/smart-turn-v3</code>，国内易超时。关闭时打断仍靠 Silero VAD。</p>
+              <table class="params">
+                <thead>
+                  <tr><th>参数</th><th>方案 B 示例</th><th>说明</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td><code>--stt</code></td><td>paraformer</td><td>听写；别名解析为 Paraformer-zh</td></tr>
+                  <tr><td><code>--llm_backend</code></td><td>chat-completions</td><td>B：HTTP 兼容接口；A：transformers 本地加载</td></tr>
+                  <tr><td><code>--model_name</code></td><td>deepseek-chat</td><td>B：云端对话名；A：本地 4B 目录</td></tr>
+                  <tr><td><code>--responses_api_base_url</code></td><td>https://api.deepseek.com</td><td>仅 B</td></tr>
+                  <tr><td><code>--responses_api_stream</code></td><td>开</td><td>流式回复</td></tr>
+                  <tr><td><code>--chat_size</code></td><td>10</td><td>保留最近轮数，省上下文</td></tr>
+                  <tr><td><code>--tts</code> / <code>--qwen3_tts_*</code></td><td>0.6B + Vivian + chinese</td><td>出声模型、音色、语言、风格 instruct</td></tr>
+                  <tr><td><code>--device</code></td><td>cuda</td><td>NVIDIA GPU</td></tr>
+                  <tr><td><code>--no_smart_turn</code></td><td>默认带上</td><td>有此参数 = 关闭 Smart Turn</td></tr>
+                  <tr><td><code>PYTORCH_CUDA_ALLOC_CONF</code></td><td>expandable_segments:True</td><td>环境变量，减轻显存碎片</td></tr>
+                  <tr><td><code>DEEPSEEK_API_KEY</code></td><td>从 dsh 凭据读取</td><td>仅 B；勿写入仓库</td></tr>
+                </tbody>
+              </table>
+              <p class="hint" style="margin-top:12px">Gateway 五字段：Provider / URL 由本地模式自动填写；模型与音色留空（由上表管理）。</p>
+            </div>
+          </details>
+        </div>
+
+        <div class="footer">
+          <span class="msg" id="footerMsg">本地模式预览：先安装，再启动，状态变绿后点应用。</span>
+          <button type="button" class="btn btn-primary" id="btnApply">应用</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let mode = 'local';
+    let scheme = 'B';
+    let installed = false;
+    let running = false;
+
+    function setMode(m) {
+      mode = m;
+      document.getElementById('modeCloud').classList.toggle('active', m === 'cloud');
+      document.getElementById('modeLocal').classList.toggle('active', m === 'local');
+      document.getElementById('panelCloud').classList.toggle('hidden', m !== 'cloud');
+      document.getElementById('panelLocal').classList.toggle('hidden', m !== 'local');
+      document.getElementById('chainVoice').textContent = m === 'cloud' ? '云端 Realtime' : '本地 speech-to-speech';
+      if (m === 'cloud') {
+        setDots('ok', '云端 · 待填 Key');
+        document.getElementById('footerMsg').textContent = '云端模式：填写供应商与 Key 后点应用。';
+      } else {
+        refreshLocalStatus();
+      }
+    }
+
+    function setScheme(s) {
+      scheme = s;
+      document.getElementById('schA').classList.toggle('active', s === 'A');
+      document.getElementById('schB').classList.toggle('active', s === 'B');
+      document.getElementById('pipeLlm').textContent = s === 'A' ? 'Qwen3-4B 本地' : 'DeepSeek 云端';
+      document.getElementById('env4b').classList.toggle('hidden', s !== 'A');
+    }
+
+    function setDots(kind, text) {
+      const d = document.getElementById('dotVoice');
+      d.className = 'dot ' + (kind === 'ok' ? 'ok' : kind === 'bad' ? 'bad' : 'warn');
+      document.getElementById('txtVoice').textContent = text;
+    }
+
+    function refreshLocalStatus() {
+      if (!installed) {
+        setDots('warn', '本地模型 · 未安装');
+        document.getElementById('btnStart').disabled = true;
+        document.getElementById('btnStop').disabled = true;
+        document.getElementById('footerMsg').textContent = '本地模式：先一键安装，再启动服务。';
+      } else if (!running) {
+        setDots('warn', '本地模型 · 已安装未运行');
+        document.getElementById('btnStart').disabled = false;
+        document.getElementById('btnStop').disabled = true;
+      } else {
+        setDots('ok', 'Speech-to-Speech · 已连接');
+        document.getElementById('btnStart').disabled = true;
+        document.getElementById('btnStop').disabled = false;
+        document.getElementById('footerMsg').textContent = '本地服务在 8765；可点应用写入 Gateway。';
+      }
+    }
+
+    function mockCheck() {
+      document.getElementById('log').textContent += '\n[检测] GPU RTX 4080 SUPER · Python 可用 · 根目录可写';
+    }
+
+    function mockInstall() {
+      const bar = document.getElementById('bar');
+      const log = document.getElementById('log');
+      const btn = document.getElementById('btnInstall');
+      btn.disabled = true;
+      log.textContent = '开始安装到 ' + document.getElementById('installRoot').value + '\n';
+      const steps = [
+        '创建 venv',
+        '安装 CUDA PyTorch',
+        '安装 speech-to-speech[paraformer]',
+        '下载 Paraformer / TTS' + (scheme === 'A' ? ' / Qwen3-4B' : ''),
+        '同步 ModelScope 缓存',
+        '写入本地配置'
+      ];
+      let i = 0;
+      const t = setInterval(() => {
+        if (i < steps.length) {
+          log.textContent += '✓ ' + steps[i] + '\n';
+          bar.style.width = ((i + 1) / steps.length * 100) + '%';
+          i++;
+        } else {
+          clearInterval(t);
+          installed = true;
+          running = false;
+          btn.disabled = false;
+          log.textContent += '安装完成。可以启动本地语音。\n';
+          refreshLocalStatus();
+        }
+      }, 400);
+    }
+
+    function mockStart() {
+      running = true;
+      document.getElementById('log').textContent += '启动 speech-to-speech … 监听 ws://127.0.0.1:8765/v1/realtime\n';
+      refreshLocalStatus();
+    }
+    function mockStop() {
+      running = false;
+      document.getElementById('log').textContent += '已停止本地语音服务。\n';
+      refreshLocalStatus();
+    }
+
+    function setPreviewState(s) {
+      if (s === 'fresh') { installed = false; running = false; document.getElementById('bar').style.width = '0%'; }
+      if (s === 'running') { installed = true; running = true; document.getElementById('bar').style.width = '100%'; }
+      if (s === 'error') {
+        installed = true; running = false;
+        setDots('bad', 'Speech-to-Speech · 连接异常');
+        document.getElementById('btnStart').disabled = false;
+        document.getElementById('btnStop').disabled = true;
+        document.getElementById('footerMsg').textContent = '8765 无服务：请启动本地语音或检查防火墙。';
+        return;
+      }
+      refreshLocalStatus();
+    }
+
+    function toggleSmart(el) {
+      el.classList.toggle('on');
+      const on = el.classList.contains('on');
+      document.getElementById('pipeSmart').textContent = on ? '开启 · 需 HF 模型' : '可选 · 当前关';
+    }
+
+    // default local
+    setMode('local');
+    setScheme('B');
+  </script>
+</body>
+</html>
