@@ -85,7 +85,7 @@
             data-settings-panel="voice"
           >
             <p class="setting-hint" data-remote-gateway-note hidden>语音和后台 Agent 由远端 Gateway 配置。</p>
-            <div class="settings-card voice-mode-card" data-local-gateway-settings>
+            <div class="settings-card voice-mode-section" data-local-gateway-settings>
               <p class="setting-hint">语音前台负责听和说。可选用云端实时服务，或本机 speech-to-speech 流水线。</p>
               <div class="voice-mode-switch" role="group" aria-label="语音前台类型">
                 <button type="button" class="voice-mode-card active" id="voice-mode-cloud" data-voice-mode="cloud">
@@ -98,7 +98,7 @@
                 </button>
               </div>
             </div>
-            <div class="settings-card realtime-settings-card" id="cloud-voice-panel" data-local-gateway-settings>
+            <div class="settings-card realtime-settings-card" id="cloud-voice-panel" data-local-gateway-settings data-voice-mode-panel="cloud">
               <div class="setting-row">
                 <label for="realtime-provider-trigger">供应商</label>
                 <div id="realtime-provider" class="settings-picker"></div>
@@ -107,7 +107,7 @@
                 <!-- Model, credential, endpoint and voice, bound to the shared catalog snapshot. -->
               </div>
             </div>
-            <div class="settings-card local-voice-card" id="local-voice-panel" data-local-gateway-settings hidden>
+            <div class="settings-card local-voice-card" id="local-voice-panel" data-local-gateway-settings data-voice-mode-panel="local" hidden>
               <div class="setting-row">
                 <span class="setting-label">运行方案</span>
                 <div class="local-scheme-switch">
@@ -117,14 +117,17 @@
               </div>
               <div class="setting-row">
                 <label for="local-install-root">安装根目录</label>
-                <input id="local-install-root" type="text" spellcheck="false" autocomplete="off" placeholder="例如 F:\GitProjects\qwenAudioAgent" />
+                <input id="local-install-root" type="text" spellcheck="false" autocomplete="off" placeholder="例如 C:\Users\你\QwenAudioLocalVoice" />
               </div>
+              <p class="setting-hint">一键安装会在该目录创建 venv、下载模型（数 GB）。dsh 后台仍需你手动安装并配置 Key。</p>
               <p class="setting-hint" id="local-voice-status-text">状态：未检测</p>
               <div class="local-voice-actions">
+                <button type="button" class="link-button" id="local-voice-install">一键安装 / 更新本地语音</button>
                 <button type="button" class="link-button" id="local-voice-verify">检测安装</button>
                 <button type="button" class="link-button" id="local-voice-start">启动本地语音</button>
                 <button type="button" class="link-button" id="local-voice-stop">停止</button>
               </div>
+              <pre class="local-voice-log" id="local-voice-log" hidden></pre>
               <details class="local-voice-advanced">
                 <summary>高级 · 启动参数</summary>
                 <div id="local-voice-advanced-fields" class="local-voice-advanced-fields"></div>
