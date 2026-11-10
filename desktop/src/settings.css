@@ -318,6 +318,12 @@ h2 {
   background: var(--panel);
 }
 
+.voice-mode-section {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
 .voice-mode-switch {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -401,7 +407,8 @@ h2 {
   margin: 0;
 }
 
-.local-voice-cmd {
+.local-voice-cmd,
+.local-voice-log {
   margin: 10px 0 0;
   padding: 10px;
   border-radius: 8px;
@@ -410,6 +417,11 @@ h2 {
   font-size: 11px;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+.local-voice-log {
+  max-height: 220px;
+  overflow: auto;
 }
 
 .realtime-settings-card {

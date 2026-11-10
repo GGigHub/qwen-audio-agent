@@ -929,6 +929,22 @@ ipcMain.handle('qwen-audio-agent:local-voice-stop', async event => {
   return localVoiceRuntime.stop()
 })
 
+ipcMain.handle('qwen-audio-agent:local-voice-install', async (event, config) => {
+  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
+    throw new Error('无权安装本地语音')
+  }
+  return localVoiceRuntime.install(config || {}, {
+    onProgress: progress => {
+      if (settingsWindow && !settingsWindow.isDestroyed()) {
+        settingsWindow.webContents.send(
+          'qwen-audio-agent:local-voice-install-progress',
+          progress,
+        )
+      }
+    },
+  })
+})
+
 ipcMain.handle('qwen-audio-agent:set-node-path', async (event, nodePath) => {
   if (!settingsWindow || event.sender !== settingsWindow.webContents) {
     throw new Error('无权设置 Node.js 路径')

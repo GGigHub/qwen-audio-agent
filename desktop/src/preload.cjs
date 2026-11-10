@@ -136,6 +136,18 @@ contextBridge.exposeInMainWorld('qwenAudioAgentDesktop', {
   localVoiceStop: () => ipcRenderer.invoke(
     'qwen-audio-agent:local-voice-stop',
   ),
+  localVoiceInstall: config => ipcRenderer.invoke(
+    'qwen-audio-agent:local-voice-install',
+    config,
+  ),
+  onLocalVoiceInstallProgress: callback => {
+    const listener = (_event, progress) => callback(progress)
+    ipcRenderer.on('qwen-audio-agent:local-voice-install-progress', listener)
+    return () => ipcRenderer.removeListener(
+      'qwen-audio-agent:local-voice-install-progress',
+      listener,
+    )
+  },
   importSkin: () => ipcRenderer.invoke('qwen-audio-agent:skin-import'),
   removeSkin: id => ipcRenderer.invoke('qwen-audio-agent:skin-remove', id),
   setNodePath: nodePath => ipcRenderer.invoke(

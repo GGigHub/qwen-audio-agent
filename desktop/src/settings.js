@@ -115,9 +115,30 @@ const localInstallRoot = document.querySelector('#local-install-root')
 const localVoiceStatusText = document.querySelector('#local-voice-status-text')
 const localVoiceAdvancedFields = document.querySelector('#local-voice-advanced-fields')
 const localVoiceCmd = document.querySelector('#local-voice-cmd')
+const localVoiceLog = document.querySelector('#local-voice-log')
+const localVoiceInstallButton = document.querySelector('#local-voice-install')
 const localSchemeInputs = [...document.querySelectorAll('input[name="local-scheme"]')]
+const LOCAL_VOICE_PROVIDER = 'speech-to-speech'
+const DEFAULT_CLOUD_PROVIDER = 'dashscope'
 let localVoiceConfig = normalizeLocalVoiceConfig()
 let localVoiceStatus = null
+let appliedLocalFingerprint = ''
+let lastCloudRealtimeSettings = null
+let localVoiceInstalling = false
+
+function appendLocalVoiceLog(line) {
+  if (!localVoiceLog) return
+  localVoiceLog.hidden = false
+  const next = `${localVoiceLog.textContent || ''}${line}\n`
+  localVoiceLog.textContent = next.length > 12000 ? next.slice(-12000) : next
+  localVoiceLog.scrollTop = localVoiceLog.scrollHeight
+}
+
+function clearLocalVoiceLog() {
+  if (!localVoiceLog) return
+  localVoiceLog.textContent = ''
+  localVoiceLog.hidden = true
+}
 
 const LOCAL_ADVANCED_FIELDS = [
   ['stt', '听写 --stt', LOCAL_VOICE_ENUMS.stt],
@@ -216,12 +237,59 @@ function renderLocalVoiceStatus(status = localVoiceStatus) {
   localVoiceStatusText.textContent = t('状态：{phase}', { phase })
 }
 
-function setVoiceMode(mode, { persistHint = true } = {}) {
-  localVoiceConfig = normalizeLocalVoiceConfig({ ...localVoiceConfig, mode })
+function localVoiceFingerprint(config = localVoiceConfig) {
+  return JSON.stringify(normalizeLocalVoiceConfig(config))
+}
+
+function captureCloudRealtimeSettings() {
+  const values = realtimeForm.values()
+  if (!values?.realtimeProvider || values.realtimeProvider === LOCAL_VOICE_PROVIDER) return
+  lastCloudRealtimeSettings = { ...values }
+}
+
+function ensureCloudRealtimeForm() {
+  const values = realtimeForm.values()
+  if (values?.realtimeProvider !== LOCAL_VOICE_PROVIDER) {
+    captureCloudRealtimeSettings()
+    return
+  }
+  const restore = lastCloudRealtimeSettings || {
+    realtimeProvider: DEFAULT_CLOUD_PROVIDER,
+    realtimeApiKey: '',
+    realtimeUrl: '',
+    realtimeModel: '',
+    realtimeVoice: '',
+  }
+  realtimeForm.load({ ...(settings || {}), ...restore }, realtimeModelCatalogs)
+}
+
+function syncVoiceModePanels() {
+  const remote = !isLoopbackUrl(gatewayUrl.value)
+  const mode = localVoiceConfig.mode === 'local' ? 'local' : 'cloud'
   voiceModeCloud.classList.toggle('active', mode === 'cloud')
   voiceModeLocal.classList.toggle('active', mode === 'local')
-  cloudVoicePanel.hidden = mode === 'local'
-  localVoicePanel.hidden = mode !== 'local'
+  // updateApplyState also toggles [data-local-gateway-settings]; re-apply mode
+  // afterwards so only the active panel stays visible on a local Gateway.
+  cloudVoicePanel.hidden = remote || mode !== 'cloud'
+  localVoicePanel.hidden = remote || mode !== 'local'
+  cloudVoicePanel.querySelectorAll('input, select').forEach(input => {
+    if (remote || mode !== 'cloud') {
+      input.disabled = true
+      return
+    }
+    input.disabled = input.hasAttribute('data-setting-unavailable')
+  })
+  localVoicePanel.querySelectorAll('input, select').forEach(input => {
+    input.disabled = remote || mode !== 'local'
+  })
+}
+
+function setVoiceMode(mode, { persistHint = true } = {}) {
+  const nextMode = mode === 'local' ? 'local' : 'cloud'
+  if (nextMode === 'local') captureCloudRealtimeSettings()
+  localVoiceConfig = normalizeLocalVoiceConfig({ ...localVoiceConfig, mode: nextMode })
+  if (nextMode === 'cloud') ensureCloudRealtimeForm()
+  syncVoiceModePanels()
   if (persistHint) updateApplyState()
 }
 
@@ -257,11 +325,49 @@ localInstallRoot.addEventListener('input', () => {
   updateApplyState()
 })
 
+localVoiceInstallButton.addEventListener('click', async () => {
+  if (localVoiceInstalling) return
+  localVoiceInstalling = true
+  localVoiceInstallButton.disabled = true
+  clearLocalVoiceLog()
+  appendLocalVoiceLog(t('开始一键安装本地语音前台…'))
+  appendLocalVoiceLog(t('dsh 不在此安装范围内，需你自行安装配置。'))
+  showMessage(t('正在安装本地语音，请保持网络畅通…'), 'notice')
+  const stopProgress = window.qwenAudioAgentDesktop.onLocalVoiceInstallProgress?.(progress => {
+    if (progress?.message) appendLocalVoiceLog(progress.message)
+  })
+  try {
+    localVoiceConfig = normalizeLocalVoiceConfig({
+      ...localVoiceConfig,
+      installRoot: localInstallRoot.value.trim(),
+    })
+    const result = await window.qwenAudioAgentDesktop.localVoiceInstall(localVoiceConfig)
+    localVoiceConfig = normalizeLocalVoiceConfig(result.config || localVoiceConfig)
+    localInstallRoot.value = localVoiceConfig.installRoot || ''
+    renderLocalVoiceStatus(result)
+    renderLocalVoiceCmd()
+    if (result.logTail) appendLocalVoiceLog(result.logTail)
+    appendLocalVoiceLog(result.message || t('安装完成'))
+    showMessage(result.message || t('本地语音安装完成'), 'success')
+    updateApplyState()
+  } catch (error) {
+    appendLocalVoiceLog(String(error?.message || error))
+    showMessage(friendlyError(error, t('安装失败')), 'error')
+  } finally {
+    if (typeof stopProgress === 'function') stopProgress()
+    localVoiceInstalling = false
+    localVoiceInstallButton.disabled = false
+  }
+})
+
 document.querySelector('#local-voice-verify').addEventListener('click', async () => {
   try {
     const result = await window.qwenAudioAgentDesktop.localVoiceVerify(localVoiceConfig)
     localVoiceConfig = normalizeLocalVoiceConfig(result.config || localVoiceConfig)
     renderLocalVoiceStatus(result)
+    if (result.logTail) {
+      appendLocalVoiceLog(result.logTail)
+    }
     showMessage(result.message || t('检测完成'), result.ok ? 'success' : 'notice')
   } catch (error) {
     showMessage(friendlyError(error, t('检测失败')), 'error')
@@ -270,12 +376,16 @@ document.querySelector('#local-voice-verify').addEventListener('click', async ()
 
 document.querySelector('#local-voice-start').addEventListener('click', async () => {
   showMessage(t('正在启动本地语音…'))
+  appendLocalVoiceLog(t('正在启动本地语音（加载模型约 1 分钟，请看弹出的黑窗口日志）…'))
   try {
     const result = await window.qwenAudioAgentDesktop.localVoiceStart(localVoiceConfig)
     localVoiceConfig = normalizeLocalVoiceConfig(result.config || localVoiceConfig)
     renderLocalVoiceStatus(result)
+    if (result.logFile) appendLocalVoiceLog(`日志文件：${result.logFile}`)
+    if (result.logTail) appendLocalVoiceLog(result.logTail)
     showMessage(t('本地语音已启动'), 'success')
   } catch (error) {
+    appendLocalVoiceLog(String(error?.message || error))
     showMessage(friendlyError(error, t('启动失败')), 'error')
   }
 })
@@ -937,15 +1047,20 @@ function updateApplyState() {
   for (const note of document.querySelectorAll('[data-remote-gateway-note]')) {
     note.hidden = !remote
   }
+  // Mode panels share data-local-gateway-settings with the original remote/local
+  // gate; restore cloud vs local visibility after that pass.
+  syncVoiceModePanels()
   const backendAvailable = backendSelectionAvailable(
     backendReport,
     selectedBackend(),
   )
+  const settingsUnchanged = fingerprint(formSettings()) === appliedFingerprint
+  const localUnchanged = localVoiceFingerprint() === appliedLocalFingerprint
   submit.disabled = (
     applying
     || recordingWakeShortcut
     || (!remote && gatewayUrl.value === settings?.gatewayUrl && !backendAvailable)
-    || (fingerprint(formSettings()) === appliedFingerprint && (remote || !realtimeConfigurationPending))
+    || (settingsUnchanged && localUnchanged && (remote || !realtimeConfigurationPending))
   )
 }
 
@@ -1179,10 +1294,12 @@ function render() {
   localInstallRoot.value = localVoiceConfig.installRoot || ''
   syncLocalSchemeUi()
   renderLocalVoiceAdvanced()
+  if (localVoiceConfig.mode === 'cloud') captureCloudRealtimeSettings()
   setVoiceMode(localVoiceConfig.mode, { persistHint: false })
   renderLocalVoiceStatus(localVoiceStatus)
   renderRuntime()
   appliedFingerprint = fingerprint(formSettings())
+  appliedLocalFingerprint = localVoiceFingerprint()
   updateApplyState()
 }
 
@@ -1310,9 +1427,13 @@ form.addEventListener('submit', async event => {
       ...localVoiceConfig,
       installRoot: localInstallRoot.value.trim(),
     })
+    if (localVoiceConfig.mode === 'cloud') captureCloudRealtimeSettings()
     const localSaved = await window.qwenAudioAgentDesktop.localVoiceSave(localVoiceConfig)
     localVoiceConfig = normalizeLocalVoiceConfig(localSaved.config || localVoiceConfig)
     localVoiceStatus = localSaved
+    // Local mode patches Gateway to speech-to-speech in main; cloud mode uses
+    // the visible realtime form values only (do not leave a stale S2S draft).
+    if (localVoiceConfig.mode === 'cloud') ensureCloudRealtimeForm()
     const result = await window.qwenAudioAgentDesktop.saveSettings(formSettings())
     settings = result.settings
     realtimeModelCatalogs = result.realtimeModelCatalogs
@@ -1358,9 +1479,12 @@ window.qwenAudioAgentDesktop.loadSettings().then(value => {
   localVoiceStatus = value.localVoice || null
   localVoiceConfig = normalizeLocalVoiceConfig(value.localVoice?.config || {
     ...LOCAL_VOICE_DEFAULTS,
-    installRoot: 'F:\\GitProjects\\qwenAudioAgent',
+    installRoot: '',
     mode: settings.realtimeProvider === 'speech-to-speech' ? 'local' : 'cloud',
   })
+  if (!localVoiceConfig.installRoot) {
+    localInstallRoot.placeholder = t('留空则一键安装到用户目录 QwenAudioLocalVoice')
+  }
   renderWakeShortcutStatus(value.wakeShortcutRegistered)
   render()
   void detectBackendOptions()
