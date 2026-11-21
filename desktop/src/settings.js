@@ -112,11 +112,14 @@ const localVoicePanel = document.querySelector('#local-voice-panel')
 const voiceModeCloud = document.querySelector('#voice-mode-cloud')
 const voiceModeLocal = document.querySelector('#voice-mode-local')
 const localInstallRoot = document.querySelector('#local-install-root')
+const localSeedRoot = document.querySelector('#local-seed-root')
 const localVoiceStatusText = document.querySelector('#local-voice-status-text')
 const localVoiceAdvancedFields = document.querySelector('#local-voice-advanced-fields')
 const localVoiceCmd = document.querySelector('#local-voice-cmd')
 const localVoiceLog = document.querySelector('#local-voice-log')
 const localVoiceInstallButton = document.querySelector('#local-voice-install')
+const localVoiceInstallCancelButton = document.querySelector('#local-voice-install-cancel')
+const localVoicePreflightButton = document.querySelector('#local-voice-preflight')
 const localSchemeInputs = [...document.querySelectorAll('input[name="local-scheme"]')]
 const LOCAL_VOICE_PROVIDER = 'speech-to-speech'
 const DEFAULT_CLOUD_PROVIDER = 'dashscope'
@@ -125,6 +128,24 @@ let localVoiceStatus = null
 let appliedLocalFingerprint = ''
 let lastCloudRealtimeSettings = null
 let localVoiceInstalling = false
+
+function syncLocalVoiceInstallUi() {
+  if (localVoiceInstallButton) localVoiceInstallButton.disabled = localVoiceInstalling
+  if (localVoicePreflightButton) localVoicePreflightButton.disabled = localVoiceInstalling
+  if (localVoiceInstallCancelButton) {
+    localVoiceInstallCancelButton.hidden = !localVoiceInstalling
+    localVoiceInstallCancelButton.disabled = false
+  }
+}
+
+function readLocalVoicePathsIntoConfig() {
+  localVoiceConfig = normalizeLocalVoiceConfig({
+    ...localVoiceConfig,
+    installRoot: localInstallRoot?.value.trim() || '',
+    seedRoot: localSeedRoot?.value.trim() || '',
+  })
+  return localVoiceConfig
+}
 
 function appendLocalVoiceLog(line) {
   if (!localVoiceLog) return
@@ -233,6 +254,8 @@ function renderLocalVoiceStatus(status = localVoiceStatus) {
     missing: t('未安装'),
     stopped: t('已安装未运行'),
     running: t('运行中（8765）'),
+    installing: t('正在安装'),
+    'port-busy': t('端口被其它程序占用'),
   }[status.phase] || status.phase
   localVoiceStatusText.textContent = t('状态：{phase}', { phase })
 }
@@ -317,18 +340,71 @@ for (const input of localSchemeInputs) {
 }
 
 localInstallRoot.addEventListener('input', () => {
-  localVoiceConfig = normalizeLocalVoiceConfig({
-    ...localVoiceConfig,
-    installRoot: localInstallRoot.value.trim(),
-  })
+  readLocalVoicePathsIntoConfig()
   renderLocalVoiceCmd()
   updateApplyState()
+})
+
+localSeedRoot?.addEventListener('input', () => {
+  readLocalVoicePathsIntoConfig()
+  updateApplyState()
+})
+
+async function pickLocalVoiceDir(which) {
+  const path = await window.qwenAudioAgentDesktop.localVoicePickDir?.(which)
+  if (!path) return
+  if (which === 'seed') {
+    localSeedRoot.value = path
+  } else {
+    localInstallRoot.value = path
+  }
+  readLocalVoicePathsIntoConfig()
+  renderLocalVoiceCmd()
+  updateApplyState()
+}
+
+document.querySelector('#local-install-browse')?.addEventListener('click', () => {
+  pickLocalVoiceDir('install').catch(error => {
+    showMessage(friendlyError(error, t('选择目录失败')), 'error')
+  })
+})
+
+document.querySelector('#local-seed-browse')?.addEventListener('click', () => {
+  pickLocalVoiceDir('seed').catch(error => {
+    showMessage(friendlyError(error, t('选择目录失败')), 'error')
+  })
+})
+
+localVoicePreflightButton?.addEventListener('click', async () => {
+  try {
+    readLocalVoicePathsIntoConfig()
+    clearLocalVoiceLog()
+    appendLocalVoiceLog(t('正在预检 GPU / 磁盘 / Python…'))
+    const result = await window.qwenAudioAgentDesktop.localVoicePreflight(localVoiceConfig)
+    for (const note of result.notes || []) appendLocalVoiceLog(note)
+    for (const warning of result.warnings || []) appendLocalVoiceLog(`警告：${warning}`)
+    for (const error of result.errors || []) appendLocalVoiceLog(`错误：${error}`)
+    appendLocalVoiceLog(result.message || t('预检完成'))
+    showMessage(result.message || t('预检完成'), result.ok ? 'success' : 'error')
+  } catch (error) {
+    showMessage(friendlyError(error, t('预检失败')), 'error')
+  }
+})
+
+localVoiceInstallCancelButton?.addEventListener('click', async () => {
+  try {
+    const result = await window.qwenAudioAgentDesktop.localVoiceInstallCancel()
+    appendLocalVoiceLog(result.message || t('已请求取消安装'))
+    showMessage(result.message || t('已请求取消安装'), 'notice')
+  } catch (error) {
+    showMessage(friendlyError(error, t('取消失败')), 'error')
+  }
 })
 
 localVoiceInstallButton.addEventListener('click', async () => {
   if (localVoiceInstalling) return
   localVoiceInstalling = true
-  localVoiceInstallButton.disabled = true
+  syncLocalVoiceInstallUi()
   clearLocalVoiceLog()
   appendLocalVoiceLog(t('开始一键安装本地语音前台…'))
   appendLocalVoiceLog(t('dsh 不在此安装范围内，需你自行安装配置。'))
@@ -337,13 +413,12 @@ localVoiceInstallButton.addEventListener('click', async () => {
     if (progress?.message) appendLocalVoiceLog(progress.message)
   })
   try {
-    localVoiceConfig = normalizeLocalVoiceConfig({
-      ...localVoiceConfig,
-      installRoot: localInstallRoot.value.trim(),
-    })
+    readLocalVoicePathsIntoConfig()
     const result = await window.qwenAudioAgentDesktop.localVoiceInstall(localVoiceConfig)
     localVoiceConfig = normalizeLocalVoiceConfig(result.config || localVoiceConfig)
     localInstallRoot.value = localVoiceConfig.installRoot || ''
+    if (localSeedRoot) localSeedRoot.value = localVoiceConfig.seedRoot || ''
+    setVoiceMode('local', { persistHint: false })
     renderLocalVoiceStatus(result)
     renderLocalVoiceCmd()
     if (result.logTail) appendLocalVoiceLog(result.logTail)
@@ -356,7 +431,7 @@ localVoiceInstallButton.addEventListener('click', async () => {
   } finally {
     if (typeof stopProgress === 'function') stopProgress()
     localVoiceInstalling = false
-    localVoiceInstallButton.disabled = false
+    syncLocalVoiceInstallUi()
   }
 })
 
@@ -1292,6 +1367,7 @@ function render() {
   renderBackendConnection()
   nodePathInput.value = settings.nodePath || ''
   localInstallRoot.value = localVoiceConfig.installRoot || ''
+  if (localSeedRoot) localSeedRoot.value = localVoiceConfig.seedRoot || ''
   syncLocalSchemeUi()
   renderLocalVoiceAdvanced()
   if (localVoiceConfig.mode === 'cloud') captureCloudRealtimeSettings()
@@ -1423,10 +1499,7 @@ form.addEventListener('submit', async event => {
   updateApplyState()
   showMessage(t('正在应用…'))
   try {
-    localVoiceConfig = normalizeLocalVoiceConfig({
-      ...localVoiceConfig,
-      installRoot: localInstallRoot.value.trim(),
-    })
+    readLocalVoicePathsIntoConfig()
     if (localVoiceConfig.mode === 'cloud') captureCloudRealtimeSettings()
     const localSaved = await window.qwenAudioAgentDesktop.localVoiceSave(localVoiceConfig)
     localVoiceConfig = normalizeLocalVoiceConfig(localSaved.config || localVoiceConfig)
@@ -1484,6 +1557,9 @@ window.qwenAudioAgentDesktop.loadSettings().then(value => {
   })
   if (!localVoiceConfig.installRoot) {
     localInstallRoot.placeholder = t('留空则一键安装到用户目录 QwenAudioLocalVoice')
+  }
+  if (localSeedRoot && !localVoiceConfig.seedRoot) {
+    localSeedRoot.placeholder = t('可选：已有 models 的工程目录，可跳过下载')
   }
   renderWakeShortcutStatus(value.wakeShortcutRegistered)
   render()

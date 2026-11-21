@@ -8,6 +8,7 @@ export const LOCAL_VOICE_PORT = 8765
 export const LOCAL_VOICE_DEFAULTS = Object.freeze({
   mode: 'cloud',
   installRoot: '',
+  seedRoot: '',
   scheme: 'B',
   stt: 'paraformer',
   llmBackend: 'chat-completions',
@@ -88,6 +89,21 @@ export const LOCAL_VOICE_ENUMS = Object.freeze({
   ]),
 })
 
+/** Join path segments using the separator implied by the first absolute-ish segment. */
+export function joinRoot(...segments) {
+  const cleaned = segments
+    .map((part, index) => {
+      const text = String(part || '')
+      if (index === 0) return text.replace(/[\\/]+$/, '')
+      return text.replace(/^[/\\]+|[/\\]+$/g, '')
+    })
+    .filter(Boolean)
+  if (!cleaned.length) return ''
+  const head = cleaned[0]
+  const sep = head.includes('\\') && !head.startsWith('/') ? '\\' : '/'
+  return cleaned.join(sep)
+}
+
 export function normalizeLocalVoiceConfig(input = {}) {
   const next = { ...LOCAL_VOICE_DEFAULTS, ...input }
   next.mode = next.mode === 'local' ? 'local' : 'cloud'
@@ -96,6 +112,7 @@ export function normalizeLocalVoiceConfig(input = {}) {
   next.smartTurn = next.smartTurn === true
   next.chatSize = Number(next.chatSize) || 10
   next.installRoot = String(next.installRoot || '').trim()
+  next.seedRoot = String(next.seedRoot || '').trim()
   next.instruct = String(next.instruct || LOCAL_VOICE_DEFAULTS.instruct)
   return next
 }
@@ -117,13 +134,14 @@ export function resolveLocalModelName(config) {
   const normalized = normalizeLocalVoiceConfig(config)
   if (normalized.modelName !== 'local-qwen3-4b') return normalized.modelName
   if (!normalized.installRoot) return normalized.modelName
-  return `${normalized.installRoot.replace(/[\\/]+$/, '')}\\models\\Qwen3-4B-Instruct-2507`
+  return joinRoot(normalized.installRoot, 'models', 'Qwen3-4B-Instruct-2507')
 }
 
 export function buildLocalVoiceLaunchArgs(config) {
   const normalized = normalizeLocalVoiceConfig(config)
   const root = normalized.installRoot.replace(/[\\/]+$/, '')
   const args = [
+    '--ws_port', String(LOCAL_VOICE_PORT),
     '--stt', normalized.stt,
     '--llm_backend', normalized.llmBackend,
     '--model_name', resolveLocalModelName(normalized),
@@ -138,7 +156,7 @@ export function buildLocalVoiceLaunchArgs(config) {
   if (normalized.tts === 'qwen3') {
     args.push(
       '--qwen3_tts_backend', normalized.ttsBackend,
-      '--qwen3_tts_model_name', `${root}\\models\\Qwen3-TTS-12Hz-0.6B-CustomVoice`,
+      '--qwen3_tts_model_name', joinRoot(root, 'models', 'Qwen3-TTS-12Hz-0.6B-CustomVoice'),
       '--qwen3_tts_speaker', normalized.speaker,
       '--qwen3_tts_language', normalized.language,
       '--qwen3_tts_instruct', normalized.instruct,
@@ -158,4 +176,9 @@ export function localVoiceGatewayPatch(config) {
     realtimeVoice: '',
     realtimeApiKey: '',
   }
+}
+
+/** Approximate free disk needed before install (GiB). */
+export function requiredDiskGiB(scheme = 'B') {
+  return scheme === 'A' ? 22 : 14
 }

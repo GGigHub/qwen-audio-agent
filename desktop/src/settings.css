@@ -378,6 +378,18 @@ h2 {
   border-color: var(--accent);
 }
 
+.local-path-row .local-path-field {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
+
+.local-path-row .local-path-field input {
+  flex: 1;
+  min-width: 0;
+}
+
 .local-voice-actions {
   display: flex;
   flex-wrap: wrap;

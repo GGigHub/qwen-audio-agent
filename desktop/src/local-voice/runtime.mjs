@@ -8,11 +8,12 @@ import {
   buildLocalVoiceLaunchArgs,
   normalizeLocalVoiceConfig,
 } from './definitions.mjs'
-import { installLocalVoice, defaultLocalVoiceInstallRoot } from './install.mjs'
-
-function speechExe(root) {
-  return join(root, 'venv', 'Scripts', 'speech-to-speech.exe')
-}
+import {
+  installLocalVoice,
+  defaultLocalVoiceInstallRoot,
+  preflightLocalVoice,
+  speechExe,
+} from './install.mjs'
 
 function probePort(port = LOCAL_VOICE_PORT, host = '127.0.0.1', timeoutMs = 500) {
   return new Promise(resolve => {
@@ -27,6 +28,37 @@ function probePort(port = LOCAL_VOICE_PORT, host = '127.0.0.1', timeoutMs = 500)
     socket.once('timeout', () => done(false))
     socket.once('error', () => done(false))
   })
+}
+
+async function readPortOwner(port = LOCAL_VOICE_PORT) {
+  if (process.platform !== 'win32') return null
+  return new Promise(resolve => {
+    const child = spawn('powershell.exe', [
+      '-NoProfile',
+      '-Command',
+      `$c = Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if (-not $c) { exit 0 }; $p = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $c.OwningProcess) -ErrorAction SilentlyContinue; if ($p) { Write-Output ($p.ProcessId.ToString() + "`t" + $p.CommandLine) }`,
+    ], { windowsHide: true })
+    let out = ''
+    child.stdout?.on('data', chunk => { out += String(chunk) })
+    child.on('exit', () => {
+      const line = out.trim()
+      if (!line) {
+        resolve(null)
+        return
+      }
+      const [pidText, ...rest] = line.split('\t')
+      resolve({
+        pid: Number(pidText) || null,
+        commandLine: rest.join('\t') || '',
+      })
+    })
+    child.on('error', () => resolve(null))
+  })
+}
+
+function looksLikeSpeechService(owner) {
+  if (!owner?.commandLine) return false
+  return /speech[-\s]?to[-\s]?speech|qwenAudioAgent/i.test(owner.commandLine)
 }
 
 function readDeepSeekKey() {
@@ -58,6 +90,7 @@ export function createLocalVoiceRuntime({
 } = {}) {
   let child = null
   let lastLogFile = ''
+  let installAbort = null
 
   function inspect(config = store.load()) {
     const normalized = normalizeLocalVoiceConfig(config)
@@ -71,6 +104,7 @@ export function createLocalVoiceRuntime({
       executable: exe,
       installed,
       runningPid: child?.pid || null,
+      installing: Boolean(installAbort),
       logFile: logFile || lastLogFile || '',
     }
   }
@@ -78,15 +112,23 @@ export function createLocalVoiceRuntime({
   async function status(config) {
     const info = inspect(config)
     const listening = await probePort()
+    const owner = listening ? await readPortOwner() : null
+    const speechListening = listening && (!owner || looksLikeSpeechService(owner))
     return {
       ...info,
-      listening,
+      listening: speechListening,
+      portOccupiedByOther: Boolean(listening && owner && !looksLikeSpeechService(owner)),
+      portOwner: owner,
       logTail: readTail(info.logFile),
       phase: !info.installed
         ? 'missing'
-        : listening || child
-          ? 'running'
-          : 'stopped',
+        : info.installing
+          ? 'installing'
+          : speechListening || child
+            ? 'running'
+            : listening
+              ? 'port-busy'
+              : 'stopped',
     }
   }
 
@@ -97,6 +139,12 @@ export function createLocalVoiceRuntime({
       throw new Error('本地语音未安装：请先点「一键安装 / 更新本地语音」')
     }
     if (await probePort()) {
+      const owner = await readPortOwner()
+      if (owner && !looksLikeSpeechService(owner)) {
+        throw new Error(
+          `端口 ${LOCAL_VOICE_PORT} 已被其它程序占用（PID ${owner.pid}）：${owner.commandLine || '未知进程'}。请先关闭占用程序，或改用其它端口后再同步 Gateway。`,
+        )
+      }
       return status(config)
     }
     if (child && !child.killed) {
@@ -202,6 +250,12 @@ export function createLocalVoiceRuntime({
     const deadline = Date.now() + 180_000
     while (Date.now() < deadline) {
       if (await probePort()) {
+        const owner = await readPortOwner()
+        if (owner && !looksLikeSpeechService(owner)) {
+          throw new Error(
+            `启动后端口 ${LOCAL_VOICE_PORT} 被其它进程占用（PID ${owner.pid}）。日志：${logFile}`,
+          )
+        }
         const ready = await status(config)
         return { ...ready, logFile, message: '本地语音已在 8765 监听' }
       }
@@ -274,21 +328,59 @@ export function createLocalVoiceRuntime({
     }
   }
 
-  async function install(input, { onProgress, signal } = {}) {
+  async function preflight(input) {
     const config = normalizeLocalVoiceConfig({
       ...store.load(),
       ...input,
       installRoot: (input?.installRoot || store.load().installRoot || defaultLocalVoiceInstallRoot()),
     })
-    store.save(config)
-    const result = await installLocalVoice(config, { onProgress, signal, env })
-    const saved = store.save({ ...config, installRoot: result.installRoot })
-    const verified = verifyInstall(saved)
-    return {
-      ...verified,
-      ...result,
-      config: saved,
+    return preflightLocalVoice(config, { env })
+  }
+
+  async function install(input, { onProgress, signal } = {}) {
+    if (installAbort) {
+      throw new Error('已有安装任务进行中')
     }
+    const controller = new AbortController()
+    installAbort = controller
+    if (signal) {
+      if (signal.aborted) controller.abort()
+      else signal.addEventListener('abort', () => controller.abort(), { once: true })
+    }
+    try {
+      const config = normalizeLocalVoiceConfig({
+        ...store.load(),
+        ...input,
+        installRoot: (input?.installRoot || store.load().installRoot || defaultLocalVoiceInstallRoot()),
+      })
+      store.save(config)
+      const result = await installLocalVoice(config, {
+        onProgress,
+        signal: controller.signal,
+        env,
+      })
+      const saved = store.save({
+        ...config,
+        installRoot: result.installRoot,
+        mode: 'local',
+      })
+      const verified = verifyInstall(saved)
+      return {
+        ...verified,
+        ...result,
+        config: saved,
+      }
+    } finally {
+      installAbort = null
+    }
+  }
+
+  function cancelInstall() {
+    if (!installAbort) {
+      return { ok: false, message: '当前没有进行中的安装' }
+    }
+    installAbort.abort()
+    return { ok: true, message: '已请求取消安装' }
   }
 
   return {
@@ -297,7 +389,9 @@ export function createLocalVoiceRuntime({
     start,
     stop,
     verifyInstall,
+    preflight,
     install,
+    cancelInstall,
     save: input => store.save(input),
     load: () => store.load(),
   }

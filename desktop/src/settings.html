@@ -115,14 +115,26 @@
                   <label class="local-scheme"><input type="radio" name="local-scheme" value="A" /> 方案 A · 全本地 4B</label>
                 </div>
               </div>
-              <div class="setting-row">
+              <div class="setting-row local-path-row">
                 <label for="local-install-root">安装根目录</label>
-                <input id="local-install-root" type="text" spellcheck="false" autocomplete="off" placeholder="例如 C:\Users\你\QwenAudioLocalVoice" />
+                <div class="local-path-field">
+                  <input id="local-install-root" type="text" spellcheck="false" autocomplete="off" placeholder="例如 C:\Users\你\QwenAudioLocalVoice" />
+                  <button type="button" class="link-button" id="local-install-browse">浏览</button>
+                </div>
               </div>
-              <p class="setting-hint">一键安装会在该目录创建 venv、下载模型（数 GB）。dsh 后台仍需你手动安装并配置 Key。</p>
+              <div class="setting-row local-path-row">
+                <label for="local-seed-root">离线模型源（可选）</label>
+                <div class="local-path-field">
+                  <input id="local-seed-root" type="text" spellcheck="false" autocomplete="off" placeholder="已有 models 的工程目录，可跳过下载" />
+                  <button type="button" class="link-button" id="local-seed-browse">浏览</button>
+                </div>
+              </div>
+              <p class="setting-hint">一键安装会先预检 GPU/磁盘，再创建 venv、复用或下载模型（数 GB）。dsh 后台仍需你手动安装并配置 Key。</p>
               <p class="setting-hint" id="local-voice-status-text">状态：未检测</p>
               <div class="local-voice-actions">
+                <button type="button" class="link-button" id="local-voice-preflight">安装前预检</button>
                 <button type="button" class="link-button" id="local-voice-install">一键安装 / 更新本地语音</button>
+                <button type="button" class="link-button" id="local-voice-install-cancel" hidden>取消安装</button>
                 <button type="button" class="link-button" id="local-voice-verify">检测安装</button>
                 <button type="button" class="link-button" id="local-voice-start">启动本地语音</button>
                 <button type="button" class="link-button" id="local-voice-stop">停止</button>

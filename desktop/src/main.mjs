@@ -929,6 +929,13 @@ ipcMain.handle('qwen-audio-agent:local-voice-stop', async event => {
   return localVoiceRuntime.stop()
 })
 
+ipcMain.handle('qwen-audio-agent:local-voice-preflight', async (event, config) => {
+  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
+    throw new Error('无权预检本地语音安装')
+  }
+  return localVoiceRuntime.preflight(config || {})
+})
+
 ipcMain.handle('qwen-audio-agent:local-voice-install', async (event, config) => {
   if (!settingsWindow || event.sender !== settingsWindow.webContents) {
     throw new Error('无权安装本地语音')
@@ -943,6 +950,25 @@ ipcMain.handle('qwen-audio-agent:local-voice-install', async (event, config) => 
       }
     },
   })
+})
+
+ipcMain.handle('qwen-audio-agent:local-voice-install-cancel', async event => {
+  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
+    throw new Error('无权取消本地语音安装')
+  }
+  return localVoiceRuntime.cancelInstall()
+})
+
+ipcMain.handle('qwen-audio-agent:local-voice-pick-dir', async (event, which = 'install') => {
+  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
+    throw new Error('无权选择本地语音目录')
+  }
+  const selection = await dialog.showOpenDialog(settingsWindow, {
+    title: which === 'seed' ? '选择离线模型源目录' : '选择本地语音安装根目录',
+    properties: ['openDirectory', 'createDirectory'],
+  })
+  if (selection.canceled || !selection.filePaths.length) return null
+  return selection.filePaths[0]
 })
 
 ipcMain.handle('qwen-audio-agent:set-node-path', async (event, nodePath) => {
