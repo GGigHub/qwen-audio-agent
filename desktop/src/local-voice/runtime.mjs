@@ -32,11 +32,18 @@ function probePort(port = LOCAL_VOICE_PORT, host = '127.0.0.1', timeoutMs = 500)
 
 async function readPortOwner(port = LOCAL_VOICE_PORT) {
   if (process.platform !== 'win32') return null
+  // Keep this as a normal string — PowerShell `t must not appear inside a JS template literal.
+  const script = [
+    `$c = Get-NetTCPConnection -LocalPort ${Number(port)} -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1`,
+    'if (-not $c) { exit 0 }',
+    '$p = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $c.OwningProcess) -ErrorAction SilentlyContinue',
+    'if ($p) { Write-Output ($p.ProcessId.ToString() + [char]9 + $p.CommandLine) }',
+  ].join('; ')
   return new Promise(resolve => {
     const child = spawn('powershell.exe', [
       '-NoProfile',
       '-Command',
-      `$c = Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if (-not $c) { exit 0 }; $p = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $c.OwningProcess) -ErrorAction SilentlyContinue; if ($p) { Write-Output ($p.ProcessId.ToString() + "`t" + $p.CommandLine) }`,
+      script,
     ], { windowsHide: true })
     let out = ''
     child.stdout?.on('data', chunk => { out += String(chunk) })
